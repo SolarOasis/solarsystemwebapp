@@ -183,6 +183,22 @@ export const fetchAllData = async (): Promise<{ components: AnyComponent[], supp
         if (data.error) {
             throw new Error(`Google Script Error: ${data.error}`);
         }
+
+        // Defensively process supplier specialization to prevent crashes from bad data in the sheet.
+        if (data.suppliers && Array.isArray(data.suppliers)) {
+            data.suppliers.forEach((s: any) => {
+                // The sheet can return strings, numbers, or other types instead of an array.
+                if (!Array.isArray(s.specialization)) {
+                    if (s.specialization && typeof s.specialization.toString === 'function') {
+                        // Convert to string, split by comma, and trim whitespace from each item.
+                        s.specialization = s.specialization.toString().split(',').map((item: string) => item.trim()).filter(Boolean);
+                    } else {
+                        // If it's something invalid (null, undefined), default to an empty array.
+                        s.specialization = [];
+                    }
+                }
+            });
+        }
         
         if (data.projects && Array.isArray(data.projects)) {
             data.projects = data.projects.map(unflattenProjectFromApi);
