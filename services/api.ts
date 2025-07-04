@@ -1,5 +1,5 @@
 
-import { AnyComponent, Supplier, Project, ClientInfo, CostAnalysis, ProjectComponent } from '../types';
+import { AnyComponent, Supplier, Project, ProjectComponent, ComponentType, ComponentTypes } from '../types';
 
 const getApiUrl = (): string | null => {
     // Use the Vite environment variable prefix.
@@ -84,22 +84,19 @@ const flattenProjectForApi = (project: Project | Omit<Project, 'id'>): any => {
     return flatProject;
 };
 
-// --- Robust parsing helpers for un-flattening data ---
+// --- Robust parsing helpers for un-flattening and cleaning data ---
 
-// Parses a value into a number, defaulting to 0 for invalid/empty inputs.
 const parseRequiredNumber = (val: any): number => {
     const num = parseFloat(val);
     return isNaN(num) ? 0 : num;
 };
 
-// Parses a value into a number, returning undefined for invalid/empty inputs.
 const parseOptionalNumber = (val: any): number | undefined => {
     if (val === null || val === undefined || val === '') return undefined;
     const num = parseFloat(val);
     return isNaN(num) ? undefined : num;
 };
 
-// Parses a JSON string, returning a default value (e.g., empty array) on failure.
 const parseJsonField = <T>(val: any, defaultVal: T): T => {
     if (typeof val !== 'string' || !val) return defaultVal;
     try {
@@ -110,31 +107,99 @@ const parseJsonField = <T>(val: any, defaultVal: T): T => {
     }
 };
 
-// Helper to un-flatten a project object received from the API.
-const unflattenProjectFromApi = (flatProject: any): Project => {
-    const p = flatProject; // alias for brevity
+// --- Resilient, Type-safe Parsers for Data from Google Sheets ---
 
-    const project: Project = {
-        id: p.id || '',
-        name: p.name || '',
-        location: p.location || '',
+const parseComponentFromApi = (c: any): AnyComponent | null => {
+    if (!c || !c.id || !c.type || !Object.values(ComponentTypes).includes(c.type as any)) {
+        console.warn('Skipping component with invalid/missing id or type:', c);
+        return null;
+    }
+
+    const base = {
+        id: String(c.id),
+        type: c.type as ComponentType,
+        manufacturer: String(c.manufacturer || 'N/A'),
+        model: String(c.model || 'N/A'),
+        supplierId: String(c.supplierId || ''),
+        cost: parseOptionalNumber(c.cost),
+    };
+
+    switch (base.type) {
+        case ComponentTypes.SolarPanel:
+            return { ...base, wattage: parseOptionalNumber(c.wattage), efficiency: parseOptionalNumber(c.efficiency), warranty: parseOptionalNumber(c.warranty), technology: c.technology || undefined };
+        case ComponentTypes.Inverter:
+            return { ...base, capacity: parseOptionalNumber(c.capacity), inverterType: c.inverterType || undefined, efficiency: parseOptionalNumber(c.efficiency), mpptChannels: parseOptionalNumber(c.mpptChannels) };
+        case ComponentTypes.Battery:
+            return { ...base, capacity: parseOptionalNumber(c.capacity), batteryType: c.batteryType || undefined, warranty: parseOptionalNumber(c.warranty), depthOfDischarge: parseOptionalNumber(c.depthOfDischarge) };
+        case ComponentTypes.MountingSystem:
+            return { ...base, mountingType: c.mountingType || undefined, material: c.material || undefined, loadCapacity: parseOptionalNumber(c.loadCapacity) };
+        case ComponentTypes.Cable:
+            return { ...base, cableType: c.cableType || undefined, crossSection: parseOptionalNumber(c.crossSection) };
+        case ComponentTypes.MonitoringSystem:
+            let features: string[] = [];
+            if (c.features) {
+                if (typeof c.features === 'string') {
+                    features = c.features.split(',').map((item: string) => item.trim()).filter(Boolean);
+                } else if (Array.isArray(c.features)) {
+                    features = c.features;
+                }
+            }
+            return { ...base, features };
+        case ComponentTypes.ElectricCharger:
+            return { ...base, chargingSpeed: parseOptionalNumber(c.chargingSpeed), connectorType: c.connectorType || undefined };
+        default:
+            return null;
+    }
+};
+
+const parseSupplierFromApi = (s: any): Supplier | null => {
+    if (!s || !s.id) {
+        console.warn(`Skipping invalid supplier row (missing id):`, s);
+        return null;
+    }
+    
+    let specialization: ComponentType[] = [];
+    if (s.specialization) {
+        if (!Array.isArray(s.specialization)) {
+            specialization = String(s.specialization).split(',').map((item: string) => item.trim()).filter(Boolean) as ComponentType[];
+        } else {
+            specialization = s.specialization;
+        }
+    }
+    
+    return {
+        id: String(s.id),
+        name: String(s.name || `Unnamed Supplier`),
+        contactPerson: String(s.contactPerson || ''),
+        phone: String(s.phone || ''),
+        email: String(s.email || ''),
+        address: String(s.address || ''),
+        specialization,
+    };
+};
+
+const unflattenProjectFromApi = (p: any): Project | null => {
+    if (!p || !p.id) {
+        console.warn(`Skipping invalid project row (missing id):`, p);
+        return null;
+    }
+    return {
+        id: String(p.id),
+        name: String(p.name || `Project ${p.id.slice(0, 6).toUpperCase()}`),
+        location: String(p.location || ''),
         systemCapacity: parseRequiredNumber(p.systemCapacity),
-        status: p.status || 'Planning',
-        siteSurveyNotes: p.siteSurveyNotes || '',
-        
-        client: {
-            name: p.clientName || '',
-            contact: p.clientContact || '',
-            address: p.clientAddress || '',
+        status: (p.status || 'Planning') as Project['status'],
+        siteSurveyNotes: String(p.siteSurveyNotes || ''),
+        client: { 
+            name: String(p.clientName || 'Unnamed Client'), 
+            contact: String(p.clientContact || ''), 
+            address: String(p.clientAddress || '') 
         },
-
-        timeline: {
-            startDate: p.timelineStartDate || '',
-            endDate: p.timelineEndDate || '',
+        timeline: { 
+            startDate: String(p.timelineStartDate || ''), 
+            endDate: String(p.timelineEndDate || '') 
         },
-        
         components: parseJsonField<ProjectComponent[]>(p.components, []),
-        
         costAnalysis: {
             componentCosts: parseJsonField(p.costAnalysis_componentCosts, []),
             totalMaterialCost: parseRequiredNumber(p.costAnalysis_totalMaterialCost),
@@ -143,9 +208,7 @@ const unflattenProjectFromApi = (flatProject: any): Project => {
             profitMargin: parseRequiredNumber(p.costAnalysis_profitMargin),
             profitMarginPercentage: parseRequiredNumber(p.costAnalysis_profitMarginPercentage),
             costPerKw: parseRequiredNumber(p.costAnalysis_costPerKw),
-            markupAmount: parseRequiredNumber(p.costAnalysis_markupAmount), // Deprecated, but handled
-            
-            // Optional fields
+            markupAmount: parseRequiredNumber(p.costAnalysis_markupAmount),
             installationCharges: parseOptionalNumber(p.costAnalysis_installationCharges),
             commissioningCharges: parseOptionalNumber(p.costAnalysis_commissioningCharges),
             electricalCost: parseOptionalNumber(p.costAnalysis_electricalCost),
@@ -155,9 +218,28 @@ const unflattenProjectFromApi = (flatProject: any): Project => {
             markupPercentage: parseOptionalNumber(p.costAnalysis_markupPercentage),
         }
     };
-
-    return project;
 };
+
+// Generic, resilient reducer function for processing items from the sheets
+const processSheetData = <T>(items: any[], parser: (item: any) => T | null, sheetName: string): T[] => {
+    if (!items || !Array.isArray(items)) {
+        return [];
+    }
+    
+    return items
+        .map((item, index) => {
+            try {
+                if (item && typeof item === 'object' && Object.keys(item).length > 0) {
+                    return parser(item);
+                }
+                return null;
+            } catch (error) {
+                console.error(`Critical error parsing row at index ${index + 2} in '${sheetName}' sheet.`, { error, item });
+                return null; // Ensure loop continues
+            }
+        })
+        .filter((item): item is T => item !== null);
+}
 
 
 export const fetchAllData = async (): Promise<{ components: AnyComponent[], suppliers: Supplier[], projects: Project[] }> => {
@@ -167,49 +249,20 @@ export const fetchAllData = async (): Promise<{ components: AnyComponent[], supp
     }
 
     try {
-        // For GET requests, we can append parameters to the URL
         const getUrl = `${url}?action=getData`;
-        const response = await fetch(getUrl, {
-            method: 'GET',
-            mode: 'cors',
-            redirect: 'follow',
-        });
+        const response = await fetch(getUrl, { method: 'GET', mode: 'cors', redirect: 'follow' });
         
-        if (!response.ok) {
-           throw new Error(`Network response was not ok, status: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`Network response was not ok, status: ${response.status}`);
         
         const data = await response.json();
-        if (data.error) {
-            throw new Error(`Google Script Error: ${data.error}`);
-        }
+        if (data.error) throw new Error(`Google Script Error: ${data.error}`);
 
-        // Defensively process supplier specialization to prevent crashes from bad data in the sheet.
-        if (data.suppliers && Array.isArray(data.suppliers)) {
-            data.suppliers.forEach((s: any) => {
-                // The sheet can return strings, numbers, or other types instead of an array.
-                if (!Array.isArray(s.specialization)) {
-                    if (s.specialization && typeof s.specialization.toString === 'function') {
-                        // Convert to string, split by comma, and trim whitespace from each item.
-                        s.specialization = s.specialization.toString().split(',').map((item: string) => item.trim()).filter(Boolean);
-                    } else {
-                        // If it's something invalid (null, undefined), default to an empty array.
-                        s.specialization = [];
-                    }
-                }
-            });
-        }
-        
-        if (data.projects && Array.isArray(data.projects)) {
-            data.projects = data.projects.map(unflattenProjectFromApi);
-        } else {
-            data.projects = [];
-        }
-        
-        if (!data.components) data.components = [];
-        if (!data.suppliers) data.suppliers = [];
+        return {
+            components: processSheetData(data.components, parseComponentFromApi, "Components (various sheets)"),
+            suppliers: processSheetData(data.suppliers, parseSupplierFromApi, "Suppliers"),
+            projects: processSheetData(data.projects, unflattenProjectFromApi, "Projects")
+        };
 
-        return data;
     } catch (error) {
         console.error('Error in fetchAllData:', error);
         throw error;
@@ -227,18 +280,18 @@ export const updateSupplier = (supplier: Supplier) => postAction('updateSupplier
 export const deleteSupplier = (id: string) => postAction('deleteSupplier', { id });
 
 // Project actions
-export const addProject = async (project: Omit<Project, 'id'>) => {
+export const addProject = async (project: Omit<Project, 'id'>): Promise<Project | undefined> => {
     const result = await postAction('addProject', flattenProjectForApi(project));
-    return unflattenProjectFromApi(result);
+    return unflattenProjectFromApi(result) ?? undefined;
 };
-export const updateProject = async (project: Project) => {
+export const updateProject = async (project: Project): Promise<Project | undefined> => {
     const result = await postAction('updateProject', flattenProjectForApi(project));
-    return unflattenProjectFromApi(result);
+    return unflattenProjectFromApi(result) ?? undefined;
 };
 export const deleteProject = (id: string) => postAction('deleteProject', { id });
-export const duplicateProject = async (id: string) => {
+export const duplicateProject = async (id: string): Promise<Project | undefined> => {
     const result = await postAction('duplicateProject', { id });
-    return unflattenProjectFromApi(result);
+    return unflattenProjectFromApi(result) ?? undefined;
 };
 
 // New PDF action
