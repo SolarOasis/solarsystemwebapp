@@ -1,19 +1,57 @@
 
 import React, { useState, useContext } from 'react';
 import { AppContext } from '../context/AppContext';
-import { Supplier } from '../types';
+import { Supplier, ComponentTypes, ComponentType } from '../types';
 import { Card, Button, Table, Modal, Input } from '../components/ui';
 import { Plus, Edit, Trash2 } from 'lucide-react';
 
-const SupplierForm: React.FC<{ data: Partial<Supplier>, onChange: (e: React.ChangeEvent<HTMLInputElement>) => void }> = ({ data, onChange }) => {
+// New Specialization Picker component
+const SpecializationPicker: React.FC<{ selected: ComponentType[], onChange: (newSelected: ComponentType[]) => void }> = ({ selected, onChange }) => {
+    const handleCheckChange = (type: ComponentType, isChecked: boolean) => {
+        if (isChecked) {
+            onChange([...selected, type]);
+        } else {
+            onChange(selected.filter(t => t !== type));
+        }
+    };
+
+    return (
+        <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Specialization</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 border rounded-md bg-gray-50">
+                {Object.values(ComponentTypes).map(type => (
+                    <div key={type} className="flex items-center">
+                        <input
+                            id={`spec-${type}`}
+                            type="checkbox"
+                            checked={selected.includes(type)}
+                            onChange={(e) => handleCheckChange(type, e.target.checked)}
+                            className="h-4 w-4 text-brand-primary border-gray-300 rounded focus:ring-brand-primary"
+                        />
+                        <label htmlFor={`spec-${type}`} className="ml-2 block text-sm text-gray-900">
+                            {type}
+                        </label>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+
+const SupplierForm: React.FC<{ 
+    data: Partial<Supplier>, 
+    onTextChange: (e: React.ChangeEvent<HTMLInputElement>) => void,
+    onSpecializationChange: (newSelected: ComponentType[]) => void,
+}> = ({ data, onTextChange, onSpecializationChange }) => {
     return (
         <div className="space-y-4">
-            <Input label="Supplier Name" name="name" value={data.name || ''} onChange={onChange} required />
-            <Input label="Contact Person" name="contactPerson" value={data.contactPerson || ''} onChange={onChange} required />
-            <Input label="Phone" name="phone" value={data.phone || ''} onChange={onChange} />
-            <Input label="Email" type="email" name="email" value={data.email || ''} onChange={onChange} />
-            <Input label="Address" name="address" value={data.address || ''} onChange={onChange} />
-            {/* Specialization would be a multi-select in a real app */}
+            <Input label="Supplier Name" name="name" value={data.name || ''} onChange={onTextChange} required />
+            <Input label="Contact Person" name="contactPerson" value={data.contactPerson || ''} onChange={onTextChange} required />
+            <Input label="Phone" name="phone" value={data.phone || ''} onChange={onTextChange} />
+            <Input label="Email" type="email" name="email" value={data.email || ''} onChange={onTextChange} />
+            <Input label="Address" name="address" value={data.address || ''} onChange={onTextChange} />
+            <SpecializationPicker selected={data.specialization || []} onChange={onSpecializationChange} />
         </div>
     );
 };
@@ -39,8 +77,12 @@ const SuppliersPage = () => {
         setFormData({});
     };
     
-    const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setFormData(prev => ({...prev, [e.target.name]: e.target.value}));
+    };
+
+    const handleSpecializationChange = (newSelected: ComponentType[]) => {
+        setFormData(prev => ({...prev, specialization: newSelected}));
     };
 
     const handleSave = () => {
@@ -100,7 +142,8 @@ const SuppliersPage = () => {
             >
                 <SupplierForm
                     data={formData}
-                    onChange={handleFormChange}
+                    onTextChange={handleTextChange}
+                    onSpecializationChange={handleSpecializationChange}
                 />
             </Modal>
         </>

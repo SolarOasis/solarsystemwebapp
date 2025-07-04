@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { AppContext } from '../context/AppContext';
 import { Project, AnyComponent, ClientInfo, ProjectComponent, CostAnalysis } from '../types';
 import { Card, Button, Table, Input, Select } from '../components/ui';
-import { Plus, ArrowLeft, Trash2, Copy, CloudUpload, ChevronsRight } from 'lucide-react';
+import { Plus, ArrowLeft, Trash2, Copy, CloudUpload, ChevronsRight, Sun } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -128,7 +128,7 @@ const ProjectDetails = ({ project: initialProject }: { project: Project }) => {
             (proj.costAnalysis.electricalCost || 0);
 
         // 3. Calculate final selling price from individual editable selling prices
-        const totalComponentSellingPrice = proj.components.reduce((acc, item) => acc + ((item.sellingPrice || item.costAtTimeOfAdd) * item.quantity), 0);
+        const totalComponentSellingPrice = proj.components.reduce((acc, item) => acc + ((item.sellingPrice ?? item.costAtTimeOfAdd) * item.quantity), 0);
         
         const installationSellingPrice = proj.costAnalysis.installationSellingPrice ?? proj.costAnalysis.installationCharges ?? 0;
         const commissioningSellingPrice = proj.costAnalysis.commissioningSellingPrice ?? proj.costAnalysis.commissioningCharges ?? 0;
@@ -341,9 +341,11 @@ const ProjectDetails = ({ project: initialProject }: { project: Project }) => {
                         <div className="flex justify-between items-center"><span className="text-gray-600">Electrical Cost:</span> <Input type="number" value={project.costAnalysis.electricalCost || ''} onChange={e => handleCostInputChange('electricalCost', e.target.value)} className="w-32 text-right" placeholder="e.g., 800"/></div>
                         <div className="flex justify-between font-bold text-lg border-t pt-2 mt-2"><span className="text-gray-800">Total Project Cost (COGS):</span> <span>{project.costAnalysis.totalProjectCost.toFixed(2)} AED</span></div>
                     </div>
-                     <div className="flex items-center gap-4 mt-4 pt-4 border-t">
-                        <Input label="Markup %" type="number" value={project.costAnalysis.markupPercentage || ''} onChange={e => handleCostInputChange('markupPercentage', e.target.value)} className="w-32" placeholder="e.g., 25" />
-                        <Button onClick={handleApplyMarkup} variant="secondary" className="mt-auto"><ChevronsRight className="mr-2 h-4 w-4"/> Apply Markup</Button>
+                    <div className="flex items-end gap-4 mt-4 pt-4 border-t">
+                        <div className="flex-grow">
+                            <Input label="Markup %" type="number" value={project.costAnalysis.markupPercentage || ''} onChange={e => handleCostInputChange('markupPercentage', e.target.value)} placeholder="e.g., 25" />
+                        </div>
+                        <Button onClick={handleApplyMarkup} variant="secondary"><ChevronsRight className="mr-2 h-4 w-4"/> Apply Markup</Button>
                     </div>
                 </Card>
                 <Card title="Selling Prices & Profitability">
@@ -353,7 +355,7 @@ const ProjectDetails = ({ project: initialProject }: { project: Project }) => {
                          <div className="flex justify-between items-center"><span className="text-gray-600">Electrical Selling Price:</span> <Input type="number" min="0" value={(project.costAnalysis.electricalSellingPrice ?? '')} onChange={e => handleCostInputChange('electricalSellingPrice', e.target.value)} className="w-32 text-right" placeholder="e.g., 1000"/></div>
 
                         <div className="flex justify-between text-lg font-bold border-t pt-2 mt-2"><span className="text-gray-800">Final Selling Price:</span> <span className="text-green-600">{project.costAnalysis.finalSellingPrice.toFixed(2)} AED</span></div>
-                        <div className="flex justify-between text-green-700 font-bold"><span className="text-gray-600">Profit Margin:</span> <span>{project.costAnalysis.profitMargin.toFixed(2)} AED ({project.costAnalysis.profitMarginPercentage.toFixed(2)}%)</span></div>
+                        <div className="flex justify-between text-green-700 font-bold"><span className="text-gray-600">Gross Profit (Markup):</span> <span>{project.costAnalysis.profitMargin.toFixed(2)} AED ({project.costAnalysis.profitMarginPercentage.toFixed(2)}%)</span></div>
                         <div className="flex justify-between"><span className="text-gray-600">Cost per kW:</span> <span className="font-semibold">{project.costAnalysis.costPerKw.toFixed(2)} AED</span></div>
                     </div>
                 </Card>
@@ -383,34 +385,45 @@ const QuotationTemplate = ({ project, allComponents }: { project: Project, allCo
     
     return (
     <div id="quotation-template" className="bg-white p-12 w-[800px] text-gray-800 font-sans">
-        <header className="flex justify-between items-center border-b-4 border-brand-secondary pb-4">
-            <div>
-                 <h1 className="text-4xl font-bold text-brand-primary">Solar Oasis</h1>
-                 <p className="text-gray-600">Your Partner in Renewable Energy</p>
-                 <p className="text-xs text-gray-500 mt-2">solaroasis.ae | +971 4 123 4567</p>
+        <header className="flex justify-between items-start border-b-4 border-brand-secondary pb-4">
+            <div className="flex items-center gap-4">
+                 <Sun className="h-16 w-16 text-brand-secondary" />
+                 <div>
+                     <h1 className="text-4xl font-bold text-brand-primary">solaroasis.ae</h1>
+                     <p className="text-gray-600">Your Partner in Renewable Energy</p>
+                 </div>
             </div>
-            <h2 className="text-3xl font-light text-gray-500">QUOTATION</h2>
+            <h2 className="text-3xl font-light text-gray-500 mt-2">QUOTATION</h2>
         </header>
 
-        <section className="grid grid-cols-2 gap-8 my-8">
+        <section className="grid grid-cols-2 gap-8 my-8 text-sm">
             <div>
-                <h3 className="font-bold text-gray-500 mb-2">BILLED TO</h3>
-                <p className="font-semibold text-lg">{project.client.name}</p>
+                <h3 className="font-bold text-gray-500 mb-2 tracking-wider">BILLED TO</h3>
+                <p className="font-semibold text-base text-gray-800">{project.client.name}</p>
                 <p>{project.client.address}</p>
                 <p>{project.client.contact}</p>
             </div>
             <div className="text-right">
-                <p><span className="font-bold text-gray-500">Quotation ID:</span> Q-{project.id.slice(0,6).toUpperCase()}</p>
-                <p><span className="font-bold text-gray-500">Date:</span> {new Date().toLocaleDateString()}</p>
-                 <p><span className="font-bold text-gray-500">Project:</span> {project.name}</p>
+                <div className="grid grid-cols-2">
+                  <span className="font-bold text-gray-500">Quotation ID:</span>
+                  <span>Q-{project.id.slice(0,6).toUpperCase()}</span>
+                </div>
+                <div className="grid grid-cols-2">
+                  <span className="font-bold text-gray-500">Date:</span> 
+                  <span>{new Date().toLocaleDateString('en-GB')}</span>
+                </div>
+                 <div className="grid grid-cols-2">
+                  <span className="font-bold text-gray-500">Project:</span> 
+                  <span>{project.name}</span>
+                </div>
             </div>
         </section>
 
         <section className="my-8">
-            <h3 className="font-bold text-brand-primary border-b-2 border-gray-200 pb-2 mb-2">Component List</h3>
+            <h3 className="font-bold text-brand-primary border-b-2 border-gray-200 pb-2 mb-2">System Components & Services</h3>
             <table className="w-full text-left text-sm">
                 <thead className="bg-gray-100">
-                    <tr><th className="p-2">Item</th><th className="p-2 text-center">Qty</th><th className="p-2 text-right">Unit Price</th><th className="p-2 text-right">Total</th></tr>
+                    <tr><th className="p-2 font-semibold">Item Description</th><th className="p-2 text-center font-semibold">Qty</th><th className="p-2 text-right font-semibold">Unit Price</th><th className="p-2 text-right font-semibold">Total Price</th></tr>
                 </thead>
                 <tbody>
                 {components.map(pc => {
@@ -452,8 +465,28 @@ const QuotationTemplate = ({ project, allComponents }: { project: Project, allCo
         </section>
         
         <footer className="mt-12 pt-4 border-t text-xs text-gray-500">
-            <h4 className="font-bold mb-2">Terms & Conditions</h4>
-            <p>...</p>
+            <div className="grid grid-cols-3 gap-4">
+                <div className="col-span-2">
+                    <h4 className="font-bold mb-2 text-gray-600">Terms & Conditions</h4>
+                    <p className="text-xs">
+                        1. Payment Terms: 50% advance to confirm order, 50% upon project completion and before commissioning. <br />
+                        2. This quotation is valid for fifteen (15) days from the date of issue. <br />
+                        3. All components are subject to availability. Any changes will be communicated and agreed upon.
+                    </p>
+                </div>
+                <div>
+                    <h4 className="font-bold mb-1 text-gray-600">Bank Details</h4>
+                    <p className="text-xs">
+                        <strong>Bank Name:</strong> Emirates NBD <br/>
+                        <strong>Account Name:</strong> Solar Oasis FZCO <br/>
+                        <strong>IBAN:</strong> AEXXXXXXXXXXXXXXXXXXXXX <br/>
+                        <strong>TRN:</strong> 100XXXXXXX
+                    </p>
+                </div>
+            </div>
+            <div className="text-center mt-8">
+                 <p>Solar Oasis FZCO | Al Rashidiya 1, Ajman, UAE | +971 4 123 4567 | info@solaroasis.ae | www.solaroasis.ae</p>
+            </div>
         </footer>
     </div>
     )
@@ -484,15 +517,15 @@ const InternalCostAnalysisTemplate = ({ project, allComponents }: { project: Pro
                       <div className="flex justify-between"><span className="text-gray-600">Installation Charges:</span> <span className="font-semibold">{(project.costAnalysis.installationCharges || 0).toFixed(2)} AED</span></div>
                       <div className="flex justify-between"><span className="text-gray-600">Commissioning Charges:</span> <span className="font-semibold">{(project.costAnalysis.commissioningCharges || 0).toFixed(2)} AED</span></div>
                       <div className="flex justify-between"><span className="text-gray-600">Electrical Cost:</span> <span className="font-semibold">{(project.costAnalysis.electricalCost || 0).toFixed(2)} AED</span></div>
-                      <div className="flex justify-between font-bold border-t pt-2 mt-2"><span className="text-gray-800">Total Project Cost (COGS):</span> <span>{project.costAnalysis.totalProjectCost.toFixed(2)} AED</span></div>
+                      <div className="flex justify-between font-bold text-lg border-t pt-2 mt-2"><span className="text-gray-800">Total Project Cost (COGS):</span> <span>{project.costAnalysis.totalProjectCost.toFixed(2)} AED</span></div>
                   </div>
                 </div>
                  <div>
                     <h3 className="font-bold text-brand-primary border-b-2 border-gray-200 pb-2 mb-2">Pricing & Profitability</h3>
                      <div className="space-y-1 text-sm">
-                        <div className="flex justify-between text-base font-bold"><span className="text-gray-800">Final Selling Price:</span> <span className="text-green-600">{project.costAnalysis.finalSellingPrice.toFixed(2)} AED</span></div>
-                        <div className="flex justify-between text-base text-green-700 font-bold"><span className="text-gray-800">Gross Profit Margin:</span> <span>{project.costAnalysis.profitMargin.toFixed(2)} AED</span></div>
-                        <div className="flex justify-between text-base text-green-700 font-bold"><span className="text-gray-800">Gross Profit Margin %:</span> <span>{project.costAnalysis.profitMarginPercentage.toFixed(2)}%</span></div>
+                        <div className="flex justify-between"><span className="text-gray-600">Final Selling Price:</span> <span className="font-semibold">{project.costAnalysis.finalSellingPrice.toFixed(2)} AED</span></div>
+                        <div className="flex justify-between font-bold text-green-700 border-t pt-2 mt-2"><span className="text-gray-600">Gross Profit (Markup):</span> <span>{project.costAnalysis.profitMargin.toFixed(2)} AED</span></div>
+                        <div className="flex justify-between font-bold text-green-700"><span className="text-gray-800">Gross Profit Margin %:</span> <span>{project.costAnalysis.profitMarginPercentage.toFixed(2)}%</span></div>
                     </div>
                 </div>
             </section>
