@@ -16,56 +16,56 @@ interface BaseComponent {
   type: ComponentType;
   manufacturer: string;
   model: string;
-  cost: number; // cost per unit/meter
+  cost?: number; // cost per unit/meter
   supplierId: string;
 }
 
 export interface SolarPanel extends BaseComponent {
   type: typeof ComponentTypes.SolarPanel;
-  wattage: number;
-  efficiency: number;
-  warranty: number;
-  technology: string;
+  wattage?: number;
+  efficiency?: number;
+  warranty?: number;
+  technology?: string;
 }
 
 export interface Inverter extends BaseComponent {
   type: typeof ComponentTypes.Inverter;
-  capacity: number; // in kW
-  inverterType: 'String' | 'Central' | 'Micro';
-  efficiency: number;
-  mpptChannels: number;
+  capacity?: number; // in kW
+  inverterType?: 'String' | 'Central' | 'Micro';
+  efficiency?: number;
+  mpptChannels?: number;
 }
 
 export interface Battery extends BaseComponent {
   type: typeof ComponentTypes.Battery;
-  capacity: number; // in kWh
-  batteryType: 'Lithium' | 'Lead-acid';
-  warranty: number;
-  depthOfDischarge: number;
+  capacity?: number; // in kWh
+  batteryType?: 'Lithium' | 'Lead-acid';
+  warranty?: number;
+  depthOfDischarge?: number;
 }
 
 export interface MountingSystem extends BaseComponent {
   type: typeof ComponentTypes.MountingSystem;
-  mountingType: 'Roof' | 'Ground';
-  material: string;
-  loadCapacity: number;
+  mountingType?: 'Roof' | 'Ground';
+  material?: string;
+  loadCapacity?: number;
 }
 
 export interface Cable extends BaseComponent {
   type: typeof ComponentTypes.Cable;
-  cableType: string;
-  crossSection: number; // in mm^2
+  cableType?: string;
+  crossSection?: number; // in mm^2
 }
 
 export interface MonitoringSystem extends BaseComponent {
   type: typeof ComponentTypes.MonitoringSystem;
-  features: string[];
+  features?: string[];
 }
 
 export interface ElectricCharger extends BaseComponent {
   type: typeof ComponentTypes.ElectricCharger;
-  chargingSpeed: number; // in kW
-  connectorType: 'Type 1' | 'Type 2' | 'CCS' | 'CHAdeMO';
+  chargingSpeed?: number; // in kW
+  connectorType?: 'Type 1' | 'Type 2' | 'CCS' | 'CHAdeMO';
 }
 
 export type AnyComponent = SolarPanel | Inverter | Battery | MountingSystem | Cable | MonitoringSystem | ElectricCharger;
@@ -96,13 +96,13 @@ export interface ProjectComponent {
 export interface CostAnalysis {
   componentCosts: { componentId: string; cost: number; quantity: number }[]; // This is for internal analysis PDF only.
   totalMaterialCost: number; // Sum of component costs (costAtTimeOfAdd * quantity)
-  installationCharges: number; // Cost
-  commissioningCharges: number; // Cost
-  electricalCost: number; // Cost
+  installationCharges?: number; // Cost
+  commissioningCharges?: number; // Cost
+  electricalCost?: number; // Cost
   installationSellingPrice?: number;
   commissioningSellingPrice?: number;
   electricalSellingPrice?: number;
-  markupPercentage: number;
+  markupPercentage?: number;
   totalProjectCost: number; // Total COGS = totalMaterialCost + all service charges costs
   finalSellingPrice: number; // Sum of all individual selling prices
   profitMargin: number;

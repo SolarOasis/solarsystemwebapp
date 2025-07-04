@@ -37,20 +37,14 @@ const ProjectList = ({ projects }: { projects: Project[] }) => {
             components: [],
             costAnalysis: {
                 componentCosts: [], 
-                totalMaterialCost: 0, 
-                installationCharges: 0, 
-                commissioningCharges: 0,
-                electricalCost: 0, 
-                markupPercentage: 20, 
+                totalMaterialCost: 0,
+                markupPercentage: 20, // A sensible default
                 totalProjectCost: 0, 
                 finalSellingPrice: 0,
                 profitMargin: 0, 
                 profitMarginPercentage: 0, 
                 costPerKw: 0, 
                 markupAmount: 0,
-                installationSellingPrice: 0,
-                commissioningSellingPrice: 0,
-                electricalSellingPrice: 0
             }
         };
         const newProject = await addProject(newProjectData);
@@ -127,15 +121,18 @@ const ProjectDetails = ({ project: initialProject }: { project: Project }) => {
         // 1. Calculate total material cost (COGS for materials) from locked-in costs
         const totalMaterialCost = proj.components.reduce((acc, item) => acc + (item.costAtTimeOfAdd * item.quantity), 0);
 
-        // 2. Calculate total project cost (COGS for everything)
-        const totalProjectCost = totalMaterialCost + proj.costAnalysis.installationCharges + proj.costAnalysis.commissioningCharges + proj.costAnalysis.electricalCost;
+        // 2. Calculate total project cost (COGS for everything), treating undefined as 0
+        const totalProjectCost = totalMaterialCost + 
+            (proj.costAnalysis.installationCharges || 0) + 
+            (proj.costAnalysis.commissioningCharges || 0) + 
+            (proj.costAnalysis.electricalCost || 0);
 
         // 3. Calculate final selling price from individual editable selling prices
         const totalComponentSellingPrice = proj.components.reduce((acc, item) => acc + ((item.sellingPrice || item.costAtTimeOfAdd) * item.quantity), 0);
         
-        const installationSellingPrice = proj.costAnalysis.installationSellingPrice ?? proj.costAnalysis.installationCharges;
-        const commissioningSellingPrice = proj.costAnalysis.commissioningSellingPrice ?? proj.costAnalysis.commissioningCharges;
-        const electricalSellingPrice = proj.costAnalysis.electricalSellingPrice ?? proj.costAnalysis.electricalCost;
+        const installationSellingPrice = proj.costAnalysis.installationSellingPrice ?? proj.costAnalysis.installationCharges ?? 0;
+        const commissioningSellingPrice = proj.costAnalysis.commissioningSellingPrice ?? proj.costAnalysis.commissioningCharges ?? 0;
+        const electricalSellingPrice = proj.costAnalysis.electricalSellingPrice ?? proj.costAnalysis.electricalCost ?? 0;
         
         const finalSellingPrice = totalComponentSellingPrice + installationSellingPrice + commissioningSellingPrice + electricalSellingPrice;
 
@@ -177,7 +174,9 @@ const ProjectDetails = ({ project: initialProject }: { project: Project }) => {
     };
     
     const handleCostInputChange = <K extends keyof CostAnalysis>(key: K, value: string) => {
-        setProject(prev => ({ ...prev, costAnalysis: { ...prev.costAnalysis, [key]: parseFloat(value) || 0 } }));
+        // Allow empty string to represent undefined, otherwise parse to float
+        const parsedValue = value === '' ? undefined : parseFloat(value);
+        setProject(prev => ({ ...prev, costAnalysis: { ...prev.costAnalysis, [key]: parsedValue } }));
     };
 
     const addComponentToProject = (componentId: string) => {
@@ -192,8 +191,8 @@ const ProjectDetails = ({ project: initialProject }: { project: Project }) => {
             const newProjectComponent: ProjectComponent = {
                 componentId,
                 quantity: 1,
-                costAtTimeOfAdd: componentToAdd.cost, // Lock in the cost
-                sellingPrice: componentToAdd.cost, // Default selling price to cost initially
+                costAtTimeOfAdd: componentToAdd.cost || 0, // Lock in the cost, default to 0 if not set
+                sellingPrice: componentToAdd.cost || 0, // Default selling price to cost initially
             };
             const newComponents = [...project.components, newProjectComponent];
             setProject(prev => ({...prev, components: newComponents}));
@@ -218,7 +217,7 @@ const ProjectDetails = ({ project: initialProject }: { project: Project }) => {
     }
 
     const handleApplyMarkup = () => {
-        const markup = project.costAnalysis.markupPercentage / 100;
+        const markup = (project.costAnalysis.markupPercentage || 0) / 100;
         
         const updatedComponents = project.components.map(pc => ({
             ...pc,
@@ -227,9 +226,9 @@ const ProjectDetails = ({ project: initialProject }: { project: Project }) => {
         
         const updatedCostAnalysis: CostAnalysis = {
             ...project.costAnalysis,
-            installationSellingPrice: project.costAnalysis.installationCharges * (1 + markup),
-            commissioningSellingPrice: project.costAnalysis.commissioningCharges * (1 + markup),
-            electricalSellingPrice: project.costAnalysis.electricalCost * (1 + markup),
+            installationSellingPrice: (project.costAnalysis.installationCharges || 0) * (1 + markup),
+            commissioningSellingPrice: (project.costAnalysis.commissioningCharges || 0) * (1 + markup),
+            electricalSellingPrice: (project.costAnalysis.electricalCost || 0) * (1 + markup),
         };
         
         setProject(prev => ({
@@ -337,21 +336,21 @@ const ProjectDetails = ({ project: initialProject }: { project: Project }) => {
                 <Card title="Costs & Markup">
                     <div className="space-y-2 text-sm">
                         <div className="flex justify-between font-bold"><span className="text-gray-600">Total Material Cost:</span> <span>{project.costAnalysis.totalMaterialCost.toFixed(2)} AED</span></div>
-                        <div className="flex justify-between items-center"><span className="text-gray-600">Installation Charges Cost:</span> <Input type="number" value={project.costAnalysis.installationCharges} onChange={e => handleCostInputChange('installationCharges', e.target.value)} className="w-32 text-right" /></div>
-                        <div className="flex justify-between items-center"><span className="text-gray-600">Commissioning Charges Cost:</span> <Input type="number" value={project.costAnalysis.commissioningCharges} onChange={e => handleCostInputChange('commissioningCharges', e.target.value)} className="w-32 text-right" /></div>
-                        <div className="flex justify-between items-center"><span className="text-gray-600">Electrical Cost:</span> <Input type="number" value={project.costAnalysis.electricalCost} onChange={e => handleCostInputChange('electricalCost', e.target.value)} className="w-32 text-right" /></div>
+                        <div className="flex justify-between items-center"><span className="text-gray-600">Installation Charges Cost:</span> <Input type="number" value={project.costAnalysis.installationCharges || ''} onChange={e => handleCostInputChange('installationCharges', e.target.value)} className="w-32 text-right" placeholder="e.g., 1500"/></div>
+                        <div className="flex justify-between items-center"><span className="text-gray-600">Commissioning Charges Cost:</span> <Input type="number" value={project.costAnalysis.commissioningCharges || ''} onChange={e => handleCostInputChange('commissioningCharges', e.target.value)} className="w-32 text-right" placeholder="e.g., 500"/></div>
+                        <div className="flex justify-between items-center"><span className="text-gray-600">Electrical Cost:</span> <Input type="number" value={project.costAnalysis.electricalCost || ''} onChange={e => handleCostInputChange('electricalCost', e.target.value)} className="w-32 text-right" placeholder="e.g., 800"/></div>
                         <div className="flex justify-between font-bold text-lg border-t pt-2 mt-2"><span className="text-gray-800">Total Project Cost (COGS):</span> <span>{project.costAnalysis.totalProjectCost.toFixed(2)} AED</span></div>
                     </div>
                      <div className="flex items-center gap-4 mt-4 pt-4 border-t">
-                        <Input label="Markup %" type="number" value={project.costAnalysis.markupPercentage} onChange={e => handleCostInputChange('markupPercentage', e.target.value)} className="w-32"/>
+                        <Input label="Markup %" type="number" value={project.costAnalysis.markupPercentage || ''} onChange={e => handleCostInputChange('markupPercentage', e.target.value)} className="w-32" placeholder="e.g., 25" />
                         <Button onClick={handleApplyMarkup} variant="secondary" className="mt-auto"><ChevronsRight className="mr-2 h-4 w-4"/> Apply Markup</Button>
                     </div>
                 </Card>
                 <Card title="Selling Prices & Profitability">
                      <div className="space-y-2 text-sm">
-                         <div className="flex justify-between items-center"><span className="text-gray-600">Installation Selling Price:</span> <Input type="number" min="0" value={(project.costAnalysis.installationSellingPrice ?? 0).toFixed(2)} onChange={e => handleCostInputChange('installationSellingPrice', e.target.value)} className="w-32 text-right" /></div>
-                         <div className="flex justify-between items-center"><span className="text-gray-600">Commissioning Selling Price:</span> <Input type="number" min="0" value={(project.costAnalysis.commissioningSellingPrice ?? 0).toFixed(2)} onChange={e => handleCostInputChange('commissioningSellingPrice', e.target.value)} className="w-32 text-right" /></div>
-                         <div className="flex justify-between items-center"><span className="text-gray-600">Electrical Selling Price:</span> <Input type="number" min="0" value={(project.costAnalysis.electricalSellingPrice ?? 0).toFixed(2)} onChange={e => handleCostInputChange('electricalSellingPrice', e.target.value)} className="w-32 text-right" /></div>
+                         <div className="flex justify-between items-center"><span className="text-gray-600">Installation Selling Price:</span> <Input type="number" min="0" value={(project.costAnalysis.installationSellingPrice ?? '')} onChange={e => handleCostInputChange('installationSellingPrice', e.target.value)} className="w-32 text-right" placeholder="e.g., 2000"/></div>
+                         <div className="flex justify-between items-center"><span className="text-gray-600">Commissioning Selling Price:</span> <Input type="number" min="0" value={(project.costAnalysis.commissioningSellingPrice ?? '')} onChange={e => handleCostInputChange('commissioningSellingPrice', e.target.value)} className="w-32 text-right" placeholder="e.g., 750"/></div>
+                         <div className="flex justify-between items-center"><span className="text-gray-600">Electrical Selling Price:</span> <Input type="number" min="0" value={(project.costAnalysis.electricalSellingPrice ?? '')} onChange={e => handleCostInputChange('electricalSellingPrice', e.target.value)} className="w-32 text-right" placeholder="e.g., 1000"/></div>
 
                         <div className="flex justify-between text-lg font-bold border-t pt-2 mt-2"><span className="text-gray-800">Final Selling Price:</span> <span className="text-green-600">{project.costAnalysis.finalSellingPrice.toFixed(2)} AED</span></div>
                         <div className="flex justify-between text-green-700 font-bold"><span className="text-gray-600">Profit Margin:</span> <span>{project.costAnalysis.profitMargin.toFixed(2)} AED ({project.costAnalysis.profitMarginPercentage.toFixed(2)}%)</span></div>
@@ -378,9 +377,9 @@ const ProjectDetails = ({ project: initialProject }: { project: Project }) => {
 const QuotationTemplate = ({ project, allComponents }: { project: Project, allComponents: AnyComponent[] }) => {
     const { costAnalysis, components } = project;
     const totalComponentSellingPrice = components.reduce((acc, pc) => acc + ((pc.sellingPrice ?? pc.costAtTimeOfAdd) * pc.quantity), 0);
-    const totalServicesSellingPrice = (costAnalysis.installationSellingPrice ?? costAnalysis.installationCharges) + 
-                                      (costAnalysis.commissioningSellingPrice ?? costAnalysis.commissioningCharges) + 
-                                      (costAnalysis.electricalSellingPrice ?? costAnalysis.electricalCost);
+    const totalServicesSellingPrice = (costAnalysis.installationSellingPrice ?? costAnalysis.installationCharges ?? 0) + 
+                                      (costAnalysis.commissioningSellingPrice ?? costAnalysis.commissioningCharges ?? 0) + 
+                                      (costAnalysis.electricalSellingPrice ?? costAnalysis.electricalCost ?? 0);
     
     return (
     <div id="quotation-template" className="bg-white p-12 w-[800px] text-gray-800 font-sans">
@@ -482,9 +481,9 @@ const InternalCostAnalysisTemplate = ({ project, allComponents }: { project: Pro
                   <h3 className="font-bold text-brand-primary border-b-2 border-gray-200 pb-2 mb-2">Cost Breakdown</h3>
                   <div className="space-y-1 text-sm">
                       <div className="flex justify-between"><span className="text-gray-600">Total Material Cost:</span> <span className="font-semibold">{project.costAnalysis.totalMaterialCost.toFixed(2)} AED</span></div>
-                      <div className="flex justify-between"><span className="text-gray-600">Installation Charges:</span> <span className="font-semibold">{project.costAnalysis.installationCharges.toFixed(2)} AED</span></div>
-                      <div className="flex justify-between"><span className="text-gray-600">Commissioning Charges:</span> <span className="font-semibold">{project.costAnalysis.commissioningCharges.toFixed(2)} AED</span></div>
-                      <div className="flex justify-between"><span className="text-gray-600">Electrical Cost:</span> <span className="font-semibold">{project.costAnalysis.electricalCost.toFixed(2)} AED</span></div>
+                      <div className="flex justify-between"><span className="text-gray-600">Installation Charges:</span> <span className="font-semibold">{(project.costAnalysis.installationCharges || 0).toFixed(2)} AED</span></div>
+                      <div className="flex justify-between"><span className="text-gray-600">Commissioning Charges:</span> <span className="font-semibold">{(project.costAnalysis.commissioningCharges || 0).toFixed(2)} AED</span></div>
+                      <div className="flex justify-between"><span className="text-gray-600">Electrical Cost:</span> <span className="font-semibold">{(project.costAnalysis.electricalCost || 0).toFixed(2)} AED</span></div>
                       <div className="flex justify-between font-bold border-t pt-2 mt-2"><span className="text-gray-800">Total Project Cost (COGS):</span> <span>{project.costAnalysis.totalProjectCost.toFixed(2)} AED</span></div>
                   </div>
                 </div>

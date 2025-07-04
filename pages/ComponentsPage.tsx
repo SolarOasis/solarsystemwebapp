@@ -13,44 +13,23 @@ interface ComponentFormProps {
 }
 
 const ComponentForm: React.FC<ComponentFormProps> = ({ component, onSave, componentType, suppliers }) => {
-    const getInitialState = (): AnyComponent => {
+    // If we are editing, use the component data. If adding, create a clean object with only the type.
+    const getInitialState = (): Partial<AnyComponent> => {
         if (component) return component;
 
-        const base = {
-            id: '', // id is not needed for creation
+        return {
             type: componentType,
-            manufacturer: '',
-            model: '',
-            cost: 0,
-            supplierId: suppliers[0]?.id || '',
+            supplierId: suppliers.length > 0 ? suppliers[0].id : '',
         };
-
-        switch (componentType) {
-            case ComponentTypes.SolarPanel:
-                return { ...base, type: ComponentTypes.SolarPanel, wattage: 400, efficiency: 20, warranty: 25, technology: 'Monocrystalline' };
-            case ComponentTypes.Inverter:
-                return { ...base, type: ComponentTypes.Inverter, capacity: 5, inverterType: 'String', efficiency: 98, mpptChannels: 2 };
-            case ComponentTypes.Battery:
-                 return { ...base, type: ComponentTypes.Battery, capacity: 10, batteryType: 'Lithium', warranty: 10, depthOfDischarge: 95 };
-            case ComponentTypes.MountingSystem:
-                 return { ...base, type: ComponentTypes.MountingSystem, mountingType: 'Roof', material: 'Aluminum', loadCapacity: 50 };
-            case ComponentTypes.Cable:
-                return { ...base, type: ComponentTypes.Cable, cableType: 'PV Wire', crossSection: 4 };
-            case ComponentTypes.MonitoringSystem:
-                 return { ...base, type: ComponentTypes.MonitoringSystem, features: [] };
-            case ComponentTypes.ElectricCharger:
-                 return { ...base, type: ComponentTypes.ElectricCharger, chargingSpeed: 11, connectorType: 'Type 2' };
-            default:
-                // This should not happen with a valid componentType
-                return base as AnyComponent;
-        }
     };
     
-    const [formData, setFormData] = useState<AnyComponent>(getInitialState());
+    const [formData, setFormData] = useState<Partial<AnyComponent>>(getInitialState());
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value, type } = e.target;
-        const parsedValue = e.target.type === 'number' ? parseFloat(value) || 0 : value;
+        const { name, value } = e.target;
+        // Check if the input is a number type but the value is empty
+        const isNumeric = e.target.getAttribute('type') === 'number';
+        const parsedValue = isNumeric ? (value === '' ? undefined : parseFloat(value)) : value;
         setFormData(prev => ({ ...prev, [name]: parsedValue }));
     };
 
@@ -60,43 +39,47 @@ const ComponentForm: React.FC<ComponentFormProps> = ({ component, onSave, compon
     };
 
     const renderSpecificFields = () => {
-        switch (formData.type) {
+        const data = formData; // For brevity
+        switch (data.type) {
             case ComponentTypes.SolarPanel:
-                const panel = formData as SolarPanel;
+                const panel = data as Partial<SolarPanel>;
                 return <>
-                    <Input label="Wattage (W)" name="wattage" type="number" value={panel.wattage} onChange={handleChange} />
-                    <Input label="Efficiency (%)" name="efficiency" type="number" step="0.1" value={panel.efficiency} onChange={handleChange} />
-                    <Input label="Warranty (years)" name="warranty" type="number" value={panel.warranty} onChange={handleChange} />
-                    <Input label="Technology" name="technology" value={panel.technology} onChange={handleChange} />
+                    <Input label="Wattage (W)" name="wattage" type="number" value={panel.wattage || ''} placeholder="e.g., 450" onChange={handleChange} />
+                    <Input label="Efficiency (%)" name="efficiency" type="number" step="0.1" value={panel.efficiency || ''} placeholder="e.g., 21.5" onChange={handleChange} />
+                    <Input label="Warranty (years)" name="warranty" type="number" value={panel.warranty || ''} placeholder="e.g., 25" onChange={handleChange} />
+                    <Input label="Technology" name="technology" value={panel.technology || ''} placeholder="e.g., Monocrystalline" onChange={handleChange} />
                 </>;
             case ComponentTypes.Inverter:
-                const inverter = formData as Inverter;
+                const inverter = data as Partial<Inverter>;
                 return <>
-                    <Input label="Capacity (kW)" name="capacity" type="number" step="0.1" value={inverter.capacity} onChange={handleChange} />
-                    <Select label="Inverter Type" name="inverterType" value={inverter.inverterType} onChange={handleChange}>
+                    <Input label="Capacity (kW)" name="capacity" type="number" step="0.1" value={inverter.capacity || ''} placeholder="e.g., 5" onChange={handleChange} />
+                    <Select label="Inverter Type" name="inverterType" value={inverter.inverterType || ''} onChange={handleChange}>
+                        <option value="" disabled>Select a type...</option>
                         <option value="String">String</option>
                         <option value="Central">Central</option>
                         <option value="Micro">Micro</option>
                     </Select>
-                    <Input label="Efficiency (%)" name="efficiency" type="number" step="0.1" value={inverter.efficiency} onChange={handleChange} />
-                    <Input label="MPPT Channels" name="mpptChannels" type="number" value={inverter.mpptChannels} onChange={handleChange} />
+                    <Input label="Efficiency (%)" name="efficiency" type="number" step="0.1" value={inverter.efficiency || ''} placeholder="e.g., 98.5" onChange={handleChange} />
+                    <Input label="MPPT Channels" name="mpptChannels" type="number" value={inverter.mpptChannels || ''} placeholder="e.g., 2" onChange={handleChange} />
                 </>;
              case ComponentTypes.Battery:
-                const battery = formData as Battery;
+                const battery = data as Partial<Battery>;
                 return <>
-                    <Input label="Capacity (kWh)" name="capacity" type="number" step="0.1" value={battery.capacity} onChange={handleChange} />
-                    <Select label="Battery Type" name="batteryType" value={battery.batteryType} onChange={handleChange}>
+                    <Input label="Capacity (kWh)" name="capacity" type="number" step="0.1" value={battery.capacity || ''} placeholder="e.g., 10" onChange={handleChange} />
+                    <Select label="Battery Type" name="batteryType" value={battery.batteryType || ''} onChange={handleChange}>
+                         <option value="" disabled>Select a type...</option>
                         <option value="Lithium">Lithium</option>
                         <option value="Lead-acid">Lead-acid</option>
                     </Select>
-                    <Input label="Warranty (years)" name="warranty" type="number" value={battery.warranty} onChange={handleChange} />
-                    <Input label="Depth of Discharge (%)" name="depthOfDischarge" type="number" value={battery.depthOfDischarge} onChange={handleChange} />
+                    <Input label="Warranty (years)" name="warranty" type="number" value={battery.warranty || ''} placeholder="e.g., 10" onChange={handleChange} />
+                    <Input label="Depth of Discharge (%)" name="depthOfDischarge" type="number" value={battery.depthOfDischarge || ''} placeholder="e.g., 95" onChange={handleChange} />
                 </>;
             case ComponentTypes.ElectricCharger:
-                const charger = formData as ElectricCharger;
+                const charger = data as Partial<ElectricCharger>;
                 return <>
-                    <Input label="Charging Speed (kW)" name="chargingSpeed" type="number" step="0.1" value={charger.chargingSpeed} onChange={handleChange} />
-                    <Select label="Connector Type" name="connectorType" value={charger.connectorType} onChange={handleChange}>
+                    <Input label="Charging Speed (kW)" name="chargingSpeed" type="number" step="0.1" value={charger.chargingSpeed || ''} placeholder="e.g., 11" onChange={handleChange} />
+                    <Select label="Connector Type" name="connectorType" value={charger.connectorType || ''} onChange={handleChange}>
+                        <option value="" disabled>Select a type...</option>
                         <option value="Type 1">Type 1</option>
                         <option value="Type 2">Type 2</option>
                         <option value="CCS">CCS</option>
@@ -111,10 +94,11 @@ const ComponentForm: React.FC<ComponentFormProps> = ({ component, onSave, compon
     return (
         <form id="component-form" onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Common Fields */}
-            <Input label="Manufacturer" name="manufacturer" value={formData.manufacturer} onChange={handleChange} required className="md:col-span-1" />
-            <Input label="Model" name="model" value={formData.model} onChange={handleChange} required className="md:col-span-1" />
-            <Input label="Cost (per unit)" name="cost" type="number" step="0.01" value={formData.cost} onChange={handleChange} required />
-            <Select label="Supplier" name="supplierId" value={formData.supplierId} onChange={handleChange} required>
+            <Input label="Manufacturer" name="manufacturer" value={formData.manufacturer || ''} placeholder="e.g., Panasonic" onChange={handleChange} required className="md:col-span-1" />
+            <Input label="Model" name="model" value={formData.model || ''} placeholder="e.g., EverVolt H" onChange={handleChange} required className="md:col-span-1" />
+            <Input label="Cost (per unit)" name="cost" type="number" step="0.01" value={formData.cost || ''} placeholder="e.g., 1200" onChange={handleChange} required />
+            <Select label="Supplier" name="supplierId" value={formData.supplierId || ''} onChange={handleChange} required>
+                <option value="" disabled>Select a supplier...</option>
                 {suppliers.length === 0 && <option disabled>No suppliers available</option>}
                 {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </Select>
@@ -146,9 +130,8 @@ const ComponentsPage = () => {
         if (editingComponent) {
             updateComponent({ ...editingComponent, ...data } as AnyComponent);
         } else {
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            const { id, ...newData } = data; // remove placeholder id
-            addComponent(newData as Omit<AnyComponent, 'id'>);
+            if (!data.type) data.type = activeTab; // Ensure type is set
+            addComponent(data as Omit<AnyComponent, 'id'>);
         }
         closeModal();
     };
@@ -195,20 +178,22 @@ const ComponentsPage = () => {
             </td>
         );
 
+        const cost = component.cost ? `${component.cost} AED` : 'N/A';
+
         switch (component.type) {
             case ComponentTypes.SolarPanel:
-                return <tr key={component.id}>{commonCols}<td className="px-4 py-2">{component.wattage}W</td><td className="px-4 py-2">{component.efficiency}%</td><td className="px-4 py-2">{component.cost} AED</td><td className="px-4 py-2">{getSupplierName(component.supplierId)}</td>{actions}</tr>;
+                return <tr key={component.id}>{commonCols}<td className="px-4 py-2">{component.wattage || 'N/A'}W</td><td className="px-4 py-2">{component.efficiency || 'N/A'}%</td><td className="px-4 py-2">{cost}</td><td className="px-4 py-2">{getSupplierName(component.supplierId)}</td>{actions}</tr>;
             case ComponentTypes.Inverter:
-                return <tr key={component.id}>{commonCols}<td className="px-4 py-2">{component.capacity}kW</td><td className="px-4 py-2">{component.inverterType}</td><td className="px-4 py-2">{component.cost} AED</td><td className="px-4 py-2">{getSupplierName(component.supplierId)}</td>{actions}</tr>;
+                return <tr key={component.id}>{commonCols}<td className="px-4 py-2">{component.capacity || 'N/A'}kW</td><td className="px-4 py-2">{component.inverterType || 'N/A'}</td><td className="px-4 py-2">{cost}</td><td className="px-4 py-2">{getSupplierName(component.supplierId)}</td>{actions}</tr>;
             case ComponentTypes.Battery:
                 const battery = component as Battery;
-                return <tr key={component.id}>{commonCols}<td className="px-4 py-2">{battery.capacity}kWh</td><td className="px-4 py-2">{battery.batteryType}</td><td className="px-4 py-2">{component.cost} AED</td><td className="px-4 py-2">{getSupplierName(component.supplierId)}</td>{actions}</tr>;
+                return <tr key={component.id}>{commonCols}<td className="px-4 py-2">{battery.capacity || 'N/A'}kWh</td><td className="px-4 py-2">{battery.batteryType || 'N/A'}</td><td className="px-4 py-2">{cost}</td><td className="px-4 py-2">{getSupplierName(component.supplierId)}</td>{actions}</tr>;
             case ComponentTypes.ElectricCharger:
                 const charger = component as ElectricCharger;
-                return <tr key={component.id}>{commonCols}<td className="px-4 py-2">{charger.chargingSpeed}kW</td><td className="px-4 py-2">{charger.connectorType}</td><td className="px-4 py-2">{component.cost} AED</td><td className="px-4 py-2">{getSupplierName(component.supplierId)}</td>{actions}</tr>;
+                return <tr key={component.id}>{commonCols}<td className="px-4 py-2">{charger.chargingSpeed || 'N/A'}kW</td><td className="px-4 py-2">{charger.connectorType || 'N/A'}</td><td className="px-4 py-2">{cost}</td><td className="px-4 py-2">{getSupplierName(component.supplierId)}</td>{actions}</tr>;
             // Add other cases here for brevity...
             default:
-                return <tr key={component.id}>{commonCols}<td colSpan={3}>Details not implemented</td><td className="px-4 py-2">{component.cost} AED</td><td className="px-4 py-2">{getSupplierName(component.supplierId)}</td>{actions}</tr>;
+                return <tr key={component.id}>{commonCols}<td colSpan={3}>Details not implemented</td><td className="px-4 py-2">{cost}</td><td className="px-4 py-2">{getSupplierName(component.supplierId)}</td>{actions}</tr>;
         }
     }
 
