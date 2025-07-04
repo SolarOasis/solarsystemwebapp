@@ -191,9 +191,16 @@ const ComponentsPage = () => {
             case ComponentTypes.ElectricCharger:
                 const charger = component as ElectricCharger;
                 return <tr key={component.id}>{commonCols}<td className="px-4 py-2">{charger.chargingSpeed || 'N/A'}kW</td><td className="px-4 py-2">{charger.connectorType || 'N/A'}</td><td className="px-4 py-2">{cost}</td><td className="px-4 py-2">{getSupplierName(component.supplierId)}</td>{actions}</tr>;
-            // Add other cases here for brevity...
+            case ComponentTypes.MountingSystem:
+                const mounting = component as MountingSystem;
+                return <tr key={component.id}>{commonCols}<td className="px-4 py-2">{mounting.mountingType || 'N/A'}</td><td className="px-4 py-2">{mounting.material || 'N/A'}</td><td className="px-4 py-2">{cost}</td><td className="px-4 py-2">{getSupplierName(component.supplierId)}</td>{actions}</tr>;
+            case ComponentTypes.Cable:
+                const cable = component as Cable;
+                return <tr key={component.id}>{commonCols}<td className="px-4 py-2">{cable.cableType || 'N/A'}</td><td className="px-4 py-2">{cable.crossSection ? `${cable.crossSection} mm²` : 'N/A'}</td><td className="px-4 py-2">{cost}</td><td className="px-4 py-2">{getSupplierName(component.supplierId)}</td>{actions}</tr>;
+            case ComponentTypes.MonitoringSystem:
+                return <tr key={component.id}>{commonCols}<td className="px-4 py-2">{cost}</td><td className="px-4 py-2">{getSupplierName(component.supplierId)}</td>{actions}</tr>;
             default:
-                return <tr key={component.id}>{commonCols}<td colSpan={3}>Details not implemented</td><td className="px-4 py-2">{cost}</td><td className="px-4 py-2">{getSupplierName(component.supplierId)}</td>{actions}</tr>;
+                return <tr key={(component as AnyComponent).id}><td colSpan={headers[activeTab]?.length || 5} className="text-center py-4 text-gray-500">No details available for this component type.</td></tr>;
         }
     }
 
