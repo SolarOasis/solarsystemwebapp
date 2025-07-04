@@ -111,13 +111,18 @@ const SuppliersPage = () => {
                 title="Suppliers"
                 actions={<Button onClick={() => openModal()}><Plus className="mr-2 h-4 w-4" /> Add Supplier</Button>}
             >
-                <Table headers={['Name', 'Contact Person', 'Email', 'Phone', 'Actions']}>
+                <Table headers={['Name', 'Contact Person', 'Email', 'Phone', 'Specializations', 'Actions']}>
                     {suppliers.map(supplier => (
                         <tr key={supplier.id}>
                             <td className="whitespace-nowrap px-4 py-2 font-medium text-gray-900">{supplier.name}</td>
                             <td className="whitespace-nowrap px-4 py-2 text-gray-700">{supplier.contactPerson}</td>
                             <td className="whitespace-nowrap px-4 py-2 text-gray-700">{supplier.email}</td>
                             <td className="whitespace-nowrap px-4 py-2 text-gray-700">{supplier.phone}</td>
+                            <td className="px-4 py-2 text-gray-700 text-xs">
+                                {(supplier.specialization || []).map(spec => (
+                                    <span key={spec} className="inline-block bg-gray-200 rounded-full px-2 py-1 mr-1 mb-1">{spec}</span>
+                                ))}
+                            </td>
                             <td className="whitespace-nowrap px-4 py-2">
                                 <div className="flex gap-2">
                                     <Button variant="ghost" size="sm" onClick={() => openModal(supplier)}><Edit size={16} /></Button>
