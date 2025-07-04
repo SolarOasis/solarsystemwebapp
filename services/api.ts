@@ -1,5 +1,5 @@
 
-import { AnyComponent, Supplier, Project, ProjectComponent, ComponentType, ComponentTypes } from '../types';
+import { AnyComponent, Supplier, Project, ClientInfo, CostAnalysis, ProjectComponent } from '../types';
 
 const getApiUrl = (): string | null => {
     // Use the Vite environment variable prefix.
@@ -43,203 +43,61 @@ const postAction = async (action: string, payload: any): Promise<any> => {
     }
 };
 
-// Helper to flatten a project object for sending to the API.
-const flattenProjectForApi = (project: Project | Omit<Project, 'id'>): any => {
-    const flatProject: any = { ...project };
-
-    // Flatten client
-    if (flatProject.client) {
-        flatProject.clientName = flatProject.client.name;
-        flatProject.clientContact = flatProject.client.contact;
-        flatProject.clientAddress = flatProject.client.address;
-        delete flatProject.client;
+// Helper to stringify nested objects in a project before sending to the backend.
+const stringifyProjectNestedObjects = (project: any) => {
+    const toSend = {...project};
+    if (typeof toSend.client === 'object' && toSend.client !== null) {
+        toSend.client = JSON.stringify(toSend.client);
     }
-
-    // Flatten timeline
-    if (flatProject.timeline) {
-        flatProject.timelineStartDate = flatProject.timeline.startDate;
-        flatProject.timelineEndDate = flatProject.timeline.endDate;
-        delete flatProject.timeline;
+    if (typeof toSend.costAnalysis === 'object' && toSend.costAnalysis !== null) {
+        toSend.costAnalysis = JSON.stringify(toSend.costAnalysis);
     }
+    if (Array.isArray(toSend.components)) {
+        toSend.components = JSON.stringify(toSend.components);
+    }
+    return toSend;
+};
 
-    // Flatten costAnalysis
-    if (flatProject.costAnalysis) {
-        const costAnalysisCopy = { ...flatProject.costAnalysis };
-        // Stringify nested arrays inside costAnalysis to store them in a single cell
-        if (Array.isArray(costAnalysisCopy.componentCosts)) {
-            costAnalysisCopy.componentCosts = JSON.stringify(costAnalysisCopy.componentCosts);
+// Helper to parse nested objects in a project after receiving from the backend.
+const parseProjectNestedObjects = (project: any): Project => {
+    if (!project) return project;
+
+    let client: ClientInfo = project.client;
+    if (typeof client === 'string') {
+        try {
+            client = JSON.parse(client);
+        } catch (e) {
+            console.error('Failed to parse project.client:', client, e);
+            client = { name: 'Error: Invalid data', contact: '', address: '' };
         }
-
-        for (const [key, value] of Object.entries(costAnalysisCopy)) {
-            flatProject[`costAnalysis_${key}`] = value;
-        }
-        delete flatProject.costAnalysis;
-    }
-    
-    // Stringify components array
-    if (Array.isArray(flatProject.components)) {
-        flatProject.components = JSON.stringify(flatProject.components);
     }
 
-    return flatProject;
-};
-
-// --- Robust parsing helpers for un-flattening and cleaning data ---
-
-const parseRequiredNumber = (val: any): number => {
-    const num = parseFloat(val);
-    return isNaN(num) ? 0 : num;
-};
-
-const parseOptionalNumber = (val: any): number | undefined => {
-    if (val === null || val === undefined || val === '') return undefined;
-    const num = parseFloat(val);
-    return isNaN(num) ? undefined : num;
-};
-
-const parseJsonField = <T>(val: any, defaultVal: T): T => {
-    if (typeof val !== 'string' || !val) return defaultVal;
-    try {
-        return JSON.parse(val);
-    } catch (e) {
-        console.error('Failed to parse JSON field:', val, e);
-        return defaultVal;
-    }
-};
-
-// --- Resilient, Type-safe Parsers for Data from Google Sheets ---
-
-const parseComponentFromApi = (c: any): AnyComponent | null => {
-    if (!c || !c.id || !c.type || !Object.values(ComponentTypes).includes(c.type as any)) {
-        console.warn('Skipping component with invalid/missing id or type:', c);
-        return null;
-    }
-
-    const base = {
-        id: String(c.id),
-        type: c.type as ComponentType,
-        manufacturer: String(c.manufacturer || 'N/A'),
-        model: String(c.model || 'N/A'),
-        supplierId: String(c.supplierId || ''),
-        cost: parseOptionalNumber(c.cost),
-    };
-
-    switch (base.type) {
-        case ComponentTypes.SolarPanel:
-            return { ...base, wattage: parseOptionalNumber(c.wattage), efficiency: parseOptionalNumber(c.efficiency), warranty: parseOptionalNumber(c.warranty), technology: c.technology || undefined };
-        case ComponentTypes.Inverter:
-            return { ...base, capacity: parseOptionalNumber(c.capacity), inverterType: c.inverterType || undefined, efficiency: parseOptionalNumber(c.efficiency), mpptChannels: parseOptionalNumber(c.mpptChannels) };
-        case ComponentTypes.Battery:
-            return { ...base, capacity: parseOptionalNumber(c.capacity), batteryType: c.batteryType || undefined, warranty: parseOptionalNumber(c.warranty), depthOfDischarge: parseOptionalNumber(c.depthOfDischarge) };
-        case ComponentTypes.MountingSystem:
-            return { ...base, mountingType: c.mountingType || undefined, material: c.material || undefined, loadCapacity: parseOptionalNumber(c.loadCapacity) };
-        case ComponentTypes.Cable:
-            return { ...base, cableType: c.cableType || undefined, crossSection: parseOptionalNumber(c.crossSection) };
-        case ComponentTypes.MonitoringSystem:
-            let features: string[] = [];
-            if (c.features) {
-                if (typeof c.features === 'string') {
-                    features = c.features.split(',').map((item: string) => item.trim()).filter(Boolean);
-                } else if (Array.isArray(c.features)) {
-                    features = c.features;
-                }
-            }
-            return { ...base, features };
-        case ComponentTypes.ElectricCharger:
-            return { ...base, chargingSpeed: parseOptionalNumber(c.chargingSpeed), connectorType: c.connectorType || undefined };
-        default:
-            return null;
-    }
-};
-
-const parseSupplierFromApi = (s: any): Supplier | null => {
-    if (!s || !s.id) {
-        console.warn(`Skipping invalid supplier row (missing id):`, s);
-        return null;
-    }
-    
-    let specialization: ComponentType[] = [];
-    if (s.specialization) {
-        if (!Array.isArray(s.specialization)) {
-            specialization = String(s.specialization).split(',').map((item: string) => item.trim()).filter(Boolean) as ComponentType[];
-        } else {
-            specialization = s.specialization;
+    let costAnalysis: CostAnalysis = project.costAnalysis;
+    if (typeof costAnalysis === 'string') {
+        try {
+            costAnalysis = JSON.parse(costAnalysis);
+        } catch (e) {
+            console.error('Failed to parse project.costAnalysis:', costAnalysis, e);
+            // Provide a default structure to prevent UI crashes
+            costAnalysis = {
+                componentCosts: [], totalMaterialCost: 0, totalProjectCost: 0, finalSellingPrice: 0,
+                profitMargin: 0, profitMarginPercentage: 0, costPerKw: 0, markupAmount: 0,
+            };
         }
     }
     
-    return {
-        id: String(s.id),
-        name: String(s.name || `Unnamed Supplier`),
-        contactPerson: String(s.contactPerson || ''),
-        phone: String(s.phone || ''),
-        email: String(s.email || ''),
-        address: String(s.address || ''),
-        specialization,
-    };
-};
-
-const unflattenProjectFromApi = (p: any): Project | null => {
-    if (!p || !p.id) {
-        console.warn(`Skipping invalid project row (missing id):`, p);
-        return null;
-    }
-    return {
-        id: String(p.id),
-        name: String(p.name || `Project ${p.id.slice(0, 6).toUpperCase()}`),
-        location: String(p.location || ''),
-        systemCapacity: parseRequiredNumber(p.systemCapacity),
-        status: (p.status || 'Planning') as Project['status'],
-        siteSurveyNotes: String(p.siteSurveyNotes || ''),
-        client: { 
-            name: String(p.clientName || 'Unnamed Client'), 
-            contact: String(p.clientContact || ''), 
-            address: String(p.clientAddress || '') 
-        },
-        timeline: { 
-            startDate: String(p.timelineStartDate || ''), 
-            endDate: String(p.timelineEndDate || '') 
-        },
-        components: parseJsonField<ProjectComponent[]>(p.components, []),
-        costAnalysis: {
-            componentCosts: parseJsonField(p.costAnalysis_componentCosts, []),
-            totalMaterialCost: parseRequiredNumber(p.costAnalysis_totalMaterialCost),
-            totalProjectCost: parseRequiredNumber(p.costAnalysis_totalProjectCost),
-            finalSellingPrice: parseRequiredNumber(p.costAnalysis_finalSellingPrice),
-            profitMargin: parseRequiredNumber(p.costAnalysis_profitMargin),
-            profitMarginPercentage: parseRequiredNumber(p.costAnalysis_profitMarginPercentage),
-            costPerKw: parseRequiredNumber(p.costAnalysis_costPerKw),
-            markupAmount: parseRequiredNumber(p.costAnalysis_markupAmount),
-            installationCharges: parseOptionalNumber(p.costAnalysis_installationCharges),
-            commissioningCharges: parseOptionalNumber(p.costAnalysis_commissioningCharges),
-            electricalCost: parseOptionalNumber(p.costAnalysis_electricalCost),
-            installationSellingPrice: parseOptionalNumber(p.costAnalysis_installationSellingPrice),
-            commissioningSellingPrice: parseOptionalNumber(p.costAnalysis_commissioningSellingPrice),
-            electricalSellingPrice: parseOptionalNumber(p.costAnalysis_electricalSellingPrice),
-            markupPercentage: parseOptionalNumber(p.costAnalysis_markupPercentage),
+    let components: ProjectComponent[] = project.components;
+    if (typeof components === 'string') {
+        try {
+            components = JSON.parse(components);
+        } catch (e) {
+            console.error('Failed to parse project.components:', components, e);
+            components = [];
         }
-    };
-};
-
-// Generic, resilient reducer function for processing items from the sheets
-const processSheetData = <T>(items: any[], parser: (item: any) => T | null, sheetName: string): T[] => {
-    if (!items || !Array.isArray(items)) {
-        return [];
     }
-    
-    return items
-        .map((item, index) => {
-            try {
-                if (item && typeof item === 'object' && Object.keys(item).length > 0) {
-                    return parser(item);
-                }
-                return null;
-            } catch (error) {
-                console.error(`Critical error parsing row at index ${index + 2} in '${sheetName}' sheet.`, { error, item });
-                return null; // Ensure loop continues
-            }
-        })
-        .filter((item): item is T => item !== null);
-}
+
+    return { ...project, client, costAnalysis, components };
+};
 
 
 export const fetchAllData = async (): Promise<{ components: AnyComponent[], suppliers: Supplier[], projects: Project[] }> => {
@@ -249,20 +107,28 @@ export const fetchAllData = async (): Promise<{ components: AnyComponent[], supp
     }
 
     try {
+        // For GET requests, we can append parameters to the URL
         const getUrl = `${url}?action=getData`;
-        const response = await fetch(getUrl, { method: 'GET', mode: 'cors', redirect: 'follow' });
+        const response = await fetch(getUrl, {
+            method: 'GET',
+            mode: 'cors',
+            redirect: 'follow',
+        });
         
-        if (!response.ok) throw new Error(`Network response was not ok, status: ${response.status}`);
+        if (!response.ok) {
+           throw new Error(`Network response was not ok, status: ${response.status}`);
+        }
         
         const data = await response.json();
-        if (data.error) throw new Error(`Google Script Error: ${data.error}`);
-
-        return {
-            components: processSheetData(data.components, parseComponentFromApi, "Components (various sheets)"),
-            suppliers: processSheetData(data.suppliers, parseSupplierFromApi, "Suppliers"),
-            projects: processSheetData(data.projects, unflattenProjectFromApi, "Projects")
-        };
-
+        if (data.error) {
+            throw new Error(`Google Script Error: ${data.error}`);
+        }
+        
+        if (data.projects && Array.isArray(data.projects)) {
+            data.projects = data.projects.map(parseProjectNestedObjects);
+        }
+        
+        return data;
     } catch (error) {
         console.error('Error in fetchAllData:', error);
         throw error;
@@ -280,18 +146,18 @@ export const updateSupplier = (supplier: Supplier) => postAction('updateSupplier
 export const deleteSupplier = (id: string) => postAction('deleteSupplier', { id });
 
 // Project actions
-export const addProject = async (project: Omit<Project, 'id'>): Promise<Project | undefined> => {
-    const result = await postAction('addProject', flattenProjectForApi(project));
-    return unflattenProjectFromApi(result) ?? undefined;
+export const addProject = async (project: Omit<Project, 'id'>) => {
+    const result = await postAction('addProject', stringifyProjectNestedObjects(project));
+    return parseProjectNestedObjects(result);
 };
-export const updateProject = async (project: Project): Promise<Project | undefined> => {
-    const result = await postAction('updateProject', flattenProjectForApi(project));
-    return unflattenProjectFromApi(result) ?? undefined;
+export const updateProject = async (project: Project) => {
+    const result = await postAction('updateProject', stringifyProjectNestedObjects(project));
+    return parseProjectNestedObjects(result);
 };
 export const deleteProject = (id: string) => postAction('deleteProject', { id });
-export const duplicateProject = async (id: string): Promise<Project | undefined> => {
+export const duplicateProject = async (id: string) => {
     const result = await postAction('duplicateProject', { id });
-    return unflattenProjectFromApi(result) ?? undefined;
+    return parseProjectNestedObjects(result);
 };
 
 // New PDF action

@@ -105,6 +105,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               ? errorMessage 
               : `${errorMessage} Please check your Vercel environment variables or your script's permissions.`;
             dispatch({ type: 'SET_ERROR', payload: finalMessage });
+            // Load empty data to prevent crashes on pages
+            dispatch({ type: 'SET_INITIAL_DATA', payload: { components: [], suppliers: [], projects: [] } });
         }
     }, []);
 
