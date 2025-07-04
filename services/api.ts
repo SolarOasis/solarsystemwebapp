@@ -84,72 +84,79 @@ const flattenProjectForApi = (project: Project | Omit<Project, 'id'>): any => {
     return flatProject;
 };
 
+// --- Robust parsing helpers for un-flattening data ---
+
+// Parses a value into a number, defaulting to 0 for invalid/empty inputs.
+const parseRequiredNumber = (val: any): number => {
+    const num = parseFloat(val);
+    return isNaN(num) ? 0 : num;
+};
+
+// Parses a value into a number, returning undefined for invalid/empty inputs.
+const parseOptionalNumber = (val: any): number | undefined => {
+    if (val === null || val === undefined || val === '') return undefined;
+    const num = parseFloat(val);
+    return isNaN(num) ? undefined : num;
+};
+
+// Parses a JSON string, returning a default value (e.g., empty array) on failure.
+const parseJsonField = <T>(val: any, defaultVal: T): T => {
+    if (typeof val !== 'string' || !val) return defaultVal;
+    try {
+        return JSON.parse(val);
+    } catch (e) {
+        console.error('Failed to parse JSON field:', val, e);
+        return defaultVal;
+    }
+};
+
 // Helper to un-flatten a project object received from the API.
 const unflattenProjectFromApi = (flatProject: any): Project => {
-    const project: any = { ...flatProject };
+    const p = flatProject; // alias for brevity
 
-    // Un-flatten client
-    project.client = {
-        name: project.clientName || '',
-        contact: project.clientContact || '',
-        address: project.clientAddress || '',
-    };
-    delete project.clientName;
-    delete project.clientContact;
-    delete project.clientAddress;
+    const project: Project = {
+        id: p.id || '',
+        name: p.name || '',
+        location: p.location || '',
+        systemCapacity: parseRequiredNumber(p.systemCapacity),
+        status: p.status || 'Planning',
+        siteSurveyNotes: p.siteSurveyNotes || '',
+        
+        client: {
+            name: p.clientName || '',
+            contact: p.clientContact || '',
+            address: p.clientAddress || '',
+        },
 
-    // Un-flatten timeline
-    project.timeline = {
-        startDate: project.timelineStartDate || '',
-        endDate: project.timelineEndDate || '',
-    };
-    delete project.timelineStartDate;
-    delete project.timelineEndDate;
-
-    // Un-flatten costAnalysis
-    const newCostAnalysis: Partial<CostAnalysis> = {};
-    for (const key in project) {
-        if (key.startsWith('costAnalysis_')) {
-            const originalKey = key.substring('costAnalysis_'.length);
-            let value = project[key];
+        timeline: {
+            startDate: p.timelineStartDate || '',
+            endDate: p.timelineEndDate || '',
+        },
+        
+        components: parseJsonField<ProjectComponent[]>(p.components, []),
+        
+        costAnalysis: {
+            componentCosts: parseJsonField(p.costAnalysis_componentCosts, []),
+            totalMaterialCost: parseRequiredNumber(p.costAnalysis_totalMaterialCost),
+            totalProjectCost: parseRequiredNumber(p.costAnalysis_totalProjectCost),
+            finalSellingPrice: parseRequiredNumber(p.costAnalysis_finalSellingPrice),
+            profitMargin: parseRequiredNumber(p.costAnalysis_profitMargin),
+            profitMarginPercentage: parseRequiredNumber(p.costAnalysis_profitMarginPercentage),
+            costPerKw: parseRequiredNumber(p.costAnalysis_costPerKw),
+            markupAmount: parseRequiredNumber(p.costAnalysis_markupAmount), // Deprecated, but handled
             
-            // Parse componentCosts back into an array
-            if (originalKey === 'componentCosts' && typeof value === 'string' && value) {
-                try {
-                    value = JSON.parse(value);
-                } catch (e) {
-                    console.error('Failed to parse costAnalysis.componentCosts', value, e);
-                    value = [];
-                }
-            } else if (originalKey !== 'componentCosts' && typeof value === 'string' && value !== '' && !isNaN(Number(value))) {
-                // For other cost fields, convert numeric strings to numbers
-                value = Number(value);
-            }
-            
-            (newCostAnalysis as any)[originalKey] = value;
-            delete project[key];
+            // Optional fields
+            installationCharges: parseOptionalNumber(p.costAnalysis_installationCharges),
+            commissioningCharges: parseOptionalNumber(p.costAnalysis_commissioningCharges),
+            electricalCost: parseOptionalNumber(p.costAnalysis_electricalCost),
+            installationSellingPrice: parseOptionalNumber(p.costAnalysis_installationSellingPrice),
+            commissioningSellingPrice: parseOptionalNumber(p.costAnalysis_commissioningSellingPrice),
+            electricalSellingPrice: parseOptionalNumber(p.costAnalysis_electricalSellingPrice),
+            markupPercentage: parseOptionalNumber(p.costAnalysis_markupPercentage),
         }
-    }
-    
-    const costAnalysisDefaults: CostAnalysis = {
-        componentCosts: [], totalMaterialCost: 0, totalProjectCost: 0, finalSellingPrice: 0,
-        profitMargin: 0, profitMarginPercentage: 0, costPerKw: 0, markupAmount: 0,
     };
-    project.costAnalysis = { ...costAnalysisDefaults, ...newCostAnalysis };
 
-    // Parse components string
-    if (typeof project.components === 'string' && project.components) {
-        try {
-            project.components = JSON.parse(project.components);
-        } catch (e) {
-            console.error('Failed to parse project.components:', project.components, e);
-            project.components = [];
-        }
-    } else if (!project.components) {
-        project.components = [];
-    }
-
-    return project as Project;
+    return project;
 };
 
 
@@ -179,8 +186,13 @@ export const fetchAllData = async (): Promise<{ components: AnyComponent[], supp
         
         if (data.projects && Array.isArray(data.projects)) {
             data.projects = data.projects.map(unflattenProjectFromApi);
+        } else {
+            data.projects = [];
         }
         
+        if (!data.components) data.components = [];
+        if (!data.suppliers) data.suppliers = [];
+
         return data;
     } catch (error) {
         console.error('Error in fetchAllData:', error);
