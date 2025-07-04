@@ -1,3 +1,4 @@
+
 import { AnyComponent, Supplier, Project, ProjectComponent, ComponentType, ComponentTypes } from '../types';
 
 const getApiUrl = (): string | null => {
@@ -106,62 +107,91 @@ const parseJsonField = <T>(val: any, defaultVal: T): T => {
     }
 };
 
-// --- Type-safe Parsers for Data from Google Sheets ---
+// --- Resilient, Type-safe Parsers for Data from Google Sheets ---
 
-const parseComponentFromApi = (c: any): AnyComponent => {
+const parseComponentFromApi = (c: any): AnyComponent | null => {
+    if (!c || !c.id || !c.type || !Object.values(ComponentTypes).includes(c.type as any)) {
+        console.warn('Skipping component with invalid/missing id or type:', c);
+        return null;
+    }
+
     const base = {
-        id: c.id || '',
-        type: c.type || '',
+        id: c.id,
+        type: c.type as ComponentType,
         manufacturer: c.manufacturer || '',
         model: c.model || '',
         supplierId: c.supplierId || '',
         cost: parseOptionalNumber(c.cost),
     };
 
-    switch (c.type as ComponentType) {
+    switch (base.type) {
         case ComponentTypes.SolarPanel:
-            return { ...base, type: c.type, wattage: parseOptionalNumber(c.wattage), efficiency: parseOptionalNumber(c.efficiency), warranty: parseOptionalNumber(c.warranty), technology: c.technology || undefined };
+            return { ...base, wattage: parseOptionalNumber(c.wattage), efficiency: parseOptionalNumber(c.efficiency), warranty: parseOptionalNumber(c.warranty), technology: c.technology || undefined };
         case ComponentTypes.Inverter:
-            return { ...base, type: c.type, capacity: parseOptionalNumber(c.capacity), inverterType: c.inverterType || undefined, efficiency: parseOptionalNumber(c.efficiency), mpptChannels: parseOptionalNumber(c.mpptChannels) };
+            return { ...base, capacity: parseOptionalNumber(c.capacity), inverterType: c.inverterType || undefined, efficiency: parseOptionalNumber(c.efficiency), mpptChannels: parseOptionalNumber(c.mpptChannels) };
         case ComponentTypes.Battery:
-            return { ...base, type: c.type, capacity: parseOptionalNumber(c.capacity), batteryType: c.batteryType || undefined, warranty: parseOptionalNumber(c.warranty), depthOfDischarge: parseOptionalNumber(c.depthOfDischarge) };
+            return { ...base, capacity: parseOptionalNumber(c.capacity), batteryType: c.batteryType || undefined, warranty: parseOptionalNumber(c.warranty), depthOfDischarge: parseOptionalNumber(c.depthOfDischarge) };
         case ComponentTypes.MountingSystem:
-            return { ...base, type: c.type, mountingType: c.mountingType || undefined, material: c.material || undefined, loadCapacity: parseOptionalNumber(c.loadCapacity) };
+            return { ...base, mountingType: c.mountingType || undefined, material: c.material || undefined, loadCapacity: parseOptionalNumber(c.loadCapacity) };
         case ComponentTypes.Cable:
-            return { ...base, type: c.type, cableType: c.cableType || undefined, crossSection: parseOptionalNumber(c.crossSection) };
+            return { ...base, cableType: c.cableType || undefined, crossSection: parseOptionalNumber(c.crossSection) };
         case ComponentTypes.MonitoringSystem:
             let features: string[] = [];
-            if (typeof c.features === 'string') {
-                features = c.features.split(',').map((item: string) => item.trim()).filter(Boolean);
-            } else if (Array.isArray(c.features)) {
-                features = c.features;
+            if (c.features) {
+                if (typeof c.features === 'string') {
+                    features = c.features.split(',').map((item: string) => item.trim()).filter(Boolean);
+                } else if (Array.isArray(c.features)) {
+                    features = c.features;
+                }
             }
-            return { ...base, type: c.type, features };
+            return { ...base, features };
         case ComponentTypes.ElectricCharger:
-            return { ...base, type: c.type, chargingSpeed: parseOptionalNumber(c.chargingSpeed), connectorType: c.connectorType || undefined };
+            return { ...base, chargingSpeed: parseOptionalNumber(c.chargingSpeed), connectorType: c.connectorType || undefined };
         default:
-            throw new Error(`Unknown component type "${c.type}" for component ID ${c.id}`);
+             // This case should not be reached due to the initial check, but provides a fallback.
+            return null;
     }
 };
 
-const parseSupplierFromApi = (s: any): Supplier => {
-    let specialization: ComponentType[] = [];
-    if (!Array.isArray(s.specialization)) {
-        if (s.specialization && typeof s.specialization.toString === 'function') {
-            const specs = s.specialization.toString().split(',').map((item: string) => item.trim()).filter(Boolean);
-            specialization = specs as ComponentType[];
-        }
-    } else {
-        specialization = s.specialization;
+const parseSupplierFromApi = (s: any): Supplier | null => {
+    if (!s || !s.id || !s.name) {
+        console.warn(`Skipping invalid supplier row (missing id or name):`, s);
+        return null;
     }
+    
+    let specialization: ComponentType[] = [];
+    if (s.specialization) {
+        if (!Array.isArray(s.specialization)) {
+            // It's likely a comma-separated string from the sheet
+            specialization = s.specialization.toString().split(',').map((item: string) => item.trim()).filter(Boolean) as ComponentType[];
+        } else {
+            specialization = s.specialization;
+        }
+    }
+    
     return {
-        id: s.id || '', name: s.name || '', contactPerson: s.contactPerson || '', phone: s.phone || '', email: s.email || '', address: s.address || '', specialization,
+        id: s.id,
+        name: s.name,
+        contactPerson: s.contactPerson || '',
+        phone: s.phone || '',
+        email: s.email || '',
+        address: s.address || '',
+        specialization,
     };
 };
 
-const unflattenProjectFromApi = (p: any): Project => {
+const unflattenProjectFromApi = (p: any): Project | null => {
+    if (!p || !p.id || !p.name) {
+        console.warn(`Skipping invalid project row (missing id or name):`, p);
+        return null;
+    }
     return {
-        id: p.id || '', name: p.name || '', location: p.location || '', systemCapacity: parseRequiredNumber(p.systemCapacity), status: p.status || 'Planning', siteSurveyNotes: p.siteSurveyNotes || '',
+        id: p.id,
+        name: p.name,
+        location: p.location || '',
+        systemCapacity: parseRequiredNumber(p.systemCapacity),
+        status: p.status || 'Planning',
+        siteSurveyNotes: p.siteSurveyNotes || '',
         client: { name: p.clientName || '', contact: p.clientContact || '', address: p.clientAddress || '' },
         timeline: { startDate: p.timelineStartDate || '', endDate: p.timelineEndDate || '' },
         components: parseJsonField<ProjectComponent[]>(p.components, []),
@@ -185,23 +215,29 @@ const unflattenProjectFromApi = (p: any): Project => {
     };
 };
 
-// Generic reducer function for processing items from the sheets
-const processSheetData = <T>(items: any[], parser: (item: any) => T, sheetName: string): T[] => {
-    if (!items || !Array.isArray(items)) return [];
+// Generic, resilient reducer function for processing items from the sheets
+const processSheetData = <T>(items: any[], parser: (item: any) => T | null, sheetName: string): T[] => {
+    if (!items || !Array.isArray(items)) {
+        return [];
+    }
     
-    return items.reduce((acc: T[], item: any, index: number) => {
-        try {
-            if (item && typeof item === 'object' && item.id) {
-                acc.push(parser(item));
-            } else if (item && (Object.values(item).some(val => val !== ''))) {
-                console.warn(`Skipping invalid data at row index ${index + 2} in '${sheetName}' sheet. Data:`, item);
+    return items
+        .map((item, index) => {
+            try {
+                // Only process items that look like valid data objects.
+                if (item && typeof item === 'object') {
+                    // The parser is responsible for validation (e.g., checking for ID) and returning null if invalid.
+                    return parser(item);
+                }
+                return null;
+            } catch (error) {
+                console.error(`Critical error parsing row at index ${index + 2} in '${sheetName}' sheet.`, { error, item });
+                return null; // Ensure loop continues
             }
-        } catch (error) {
-            console.error(`Error processing item at row index ${index + 2} in '${sheetName}' sheet.`, { error, itemData: item });
-        }
-        return acc;
-    }, []);
+        })
+        .filter((item): item is T => item !== null); // Filter out any nulls from invalid or erroring rows.
 }
+
 
 export const fetchAllData = async (): Promise<{ components: AnyComponent[], suppliers: Supplier[], projects: Project[] }> => {
     const url = getApiUrl();
@@ -219,7 +255,7 @@ export const fetchAllData = async (): Promise<{ components: AnyComponent[], supp
         if (data.error) throw new Error(`Google Script Error: ${data.error}`);
 
         return {
-            components: processSheetData(data.components, parseComponentFromApi, "Components (various)"),
+            components: processSheetData(data.components, parseComponentFromApi, "Components (various sheets)"),
             suppliers: processSheetData(data.suppliers, parseSupplierFromApi, "Suppliers"),
             projects: processSheetData(data.projects, unflattenProjectFromApi, "Projects")
         };
