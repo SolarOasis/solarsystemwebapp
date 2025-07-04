@@ -1,5 +1,4 @@
-
-import { AnyComponent, Supplier, Project, ClientInfo, CostAnalysis, ProjectComponent } from '../types';
+import { AnyComponent, Supplier, Project, ProjectComponent, ComponentType, ComponentTypes } from '../types';
 
 const getApiUrl = (): string | null => {
     // Use the Vite environment variable prefix.
@@ -84,22 +83,19 @@ const flattenProjectForApi = (project: Project | Omit<Project, 'id'>): any => {
     return flatProject;
 };
 
-// --- Robust parsing helpers for un-flattening data ---
+// --- Robust parsing helpers for un-flattening and cleaning data ---
 
-// Parses a value into a number, defaulting to 0 for invalid/empty inputs.
 const parseRequiredNumber = (val: any): number => {
     const num = parseFloat(val);
     return isNaN(num) ? 0 : num;
 };
 
-// Parses a value into a number, returning undefined for invalid/empty inputs.
 const parseOptionalNumber = (val: any): number | undefined => {
     if (val === null || val === undefined || val === '') return undefined;
     const num = parseFloat(val);
     return isNaN(num) ? undefined : num;
 };
 
-// Parses a JSON string, returning a default value (e.g., empty array) on failure.
 const parseJsonField = <T>(val: any, defaultVal: T): T => {
     if (typeof val !== 'string' || !val) return defaultVal;
     try {
@@ -110,31 +106,65 @@ const parseJsonField = <T>(val: any, defaultVal: T): T => {
     }
 };
 
-// Helper to un-flatten a project object received from the API.
-const unflattenProjectFromApi = (flatProject: any): Project => {
-    const p = flatProject; // alias for brevity
+// --- Type-safe Parsers for Data from Google Sheets ---
 
-    const project: Project = {
-        id: p.id || '',
-        name: p.name || '',
-        location: p.location || '',
-        systemCapacity: parseRequiredNumber(p.systemCapacity),
-        status: p.status || 'Planning',
-        siteSurveyNotes: p.siteSurveyNotes || '',
-        
-        client: {
-            name: p.clientName || '',
-            contact: p.clientContact || '',
-            address: p.clientAddress || '',
-        },
+const parseComponentFromApi = (c: any): AnyComponent => {
+    const base = {
+        id: c.id || '',
+        type: c.type || '',
+        manufacturer: c.manufacturer || '',
+        model: c.model || '',
+        supplierId: c.supplierId || '',
+        cost: parseOptionalNumber(c.cost),
+    };
 
-        timeline: {
-            startDate: p.timelineStartDate || '',
-            endDate: p.timelineEndDate || '',
-        },
-        
+    switch (c.type as ComponentType) {
+        case ComponentTypes.SolarPanel:
+            return { ...base, type: c.type, wattage: parseOptionalNumber(c.wattage), efficiency: parseOptionalNumber(c.efficiency), warranty: parseOptionalNumber(c.warranty), technology: c.technology || undefined };
+        case ComponentTypes.Inverter:
+            return { ...base, type: c.type, capacity: parseOptionalNumber(c.capacity), inverterType: c.inverterType || undefined, efficiency: parseOptionalNumber(c.efficiency), mpptChannels: parseOptionalNumber(c.mpptChannels) };
+        case ComponentTypes.Battery:
+            return { ...base, type: c.type, capacity: parseOptionalNumber(c.capacity), batteryType: c.batteryType || undefined, warranty: parseOptionalNumber(c.warranty), depthOfDischarge: parseOptionalNumber(c.depthOfDischarge) };
+        case ComponentTypes.MountingSystem:
+            return { ...base, type: c.type, mountingType: c.mountingType || undefined, material: c.material || undefined, loadCapacity: parseOptionalNumber(c.loadCapacity) };
+        case ComponentTypes.Cable:
+            return { ...base, type: c.type, cableType: c.cableType || undefined, crossSection: parseOptionalNumber(c.crossSection) };
+        case ComponentTypes.MonitoringSystem:
+            let features: string[] = [];
+            if (typeof c.features === 'string') {
+                features = c.features.split(',').map((item: string) => item.trim()).filter(Boolean);
+            } else if (Array.isArray(c.features)) {
+                features = c.features;
+            }
+            return { ...base, type: c.type, features };
+        case ComponentTypes.ElectricCharger:
+            return { ...base, type: c.type, chargingSpeed: parseOptionalNumber(c.chargingSpeed), connectorType: c.connectorType || undefined };
+        default:
+            throw new Error(`Unknown component type "${c.type}" for component ID ${c.id}`);
+    }
+};
+
+const parseSupplierFromApi = (s: any): Supplier => {
+    let specialization: ComponentType[] = [];
+    if (!Array.isArray(s.specialization)) {
+        if (s.specialization && typeof s.specialization.toString === 'function') {
+            const specs = s.specialization.toString().split(',').map((item: string) => item.trim()).filter(Boolean);
+            specialization = specs as ComponentType[];
+        }
+    } else {
+        specialization = s.specialization;
+    }
+    return {
+        id: s.id || '', name: s.name || '', contactPerson: s.contactPerson || '', phone: s.phone || '', email: s.email || '', address: s.address || '', specialization,
+    };
+};
+
+const unflattenProjectFromApi = (p: any): Project => {
+    return {
+        id: p.id || '', name: p.name || '', location: p.location || '', systemCapacity: parseRequiredNumber(p.systemCapacity), status: p.status || 'Planning', siteSurveyNotes: p.siteSurveyNotes || '',
+        client: { name: p.clientName || '', contact: p.clientContact || '', address: p.clientAddress || '' },
+        timeline: { startDate: p.timelineStartDate || '', endDate: p.timelineEndDate || '' },
         components: parseJsonField<ProjectComponent[]>(p.components, []),
-        
         costAnalysis: {
             componentCosts: parseJsonField(p.costAnalysis_componentCosts, []),
             totalMaterialCost: parseRequiredNumber(p.costAnalysis_totalMaterialCost),
@@ -143,9 +173,7 @@ const unflattenProjectFromApi = (flatProject: any): Project => {
             profitMargin: parseRequiredNumber(p.costAnalysis_profitMargin),
             profitMarginPercentage: parseRequiredNumber(p.costAnalysis_profitMarginPercentage),
             costPerKw: parseRequiredNumber(p.costAnalysis_costPerKw),
-            markupAmount: parseRequiredNumber(p.costAnalysis_markupAmount), // Deprecated, but handled
-            
-            // Optional fields
+            markupAmount: parseRequiredNumber(p.costAnalysis_markupAmount),
             installationCharges: parseOptionalNumber(p.costAnalysis_installationCharges),
             commissioningCharges: parseOptionalNumber(p.costAnalysis_commissioningCharges),
             electricalCost: parseOptionalNumber(p.costAnalysis_electricalCost),
@@ -155,10 +183,25 @@ const unflattenProjectFromApi = (flatProject: any): Project => {
             markupPercentage: parseOptionalNumber(p.costAnalysis_markupPercentage),
         }
     };
-
-    return project;
 };
 
+// Generic reducer function for processing items from the sheets
+const processSheetData = <T>(items: any[], parser: (item: any) => T, sheetName: string): T[] => {
+    if (!items || !Array.isArray(items)) return [];
+    
+    return items.reduce((acc: T[], item: any, index: number) => {
+        try {
+            if (item && typeof item === 'object' && item.id) {
+                acc.push(parser(item));
+            } else if (item && (Object.values(item).some(val => val !== ''))) {
+                console.warn(`Skipping invalid data at row index ${index + 2} in '${sheetName}' sheet. Data:`, item);
+            }
+        } catch (error) {
+            console.error(`Error processing item at row index ${index + 2} in '${sheetName}' sheet.`, { error, itemData: item });
+        }
+        return acc;
+    }, []);
+}
 
 export const fetchAllData = async (): Promise<{ components: AnyComponent[], suppliers: Supplier[], projects: Project[] }> => {
     const url = getApiUrl();
@@ -167,64 +210,20 @@ export const fetchAllData = async (): Promise<{ components: AnyComponent[], supp
     }
 
     try {
-        // For GET requests, we can append parameters to the URL
         const getUrl = `${url}?action=getData`;
-        const response = await fetch(getUrl, {
-            method: 'GET',
-            mode: 'cors',
-            redirect: 'follow',
-        });
+        const response = await fetch(getUrl, { method: 'GET', mode: 'cors', redirect: 'follow' });
         
-        if (!response.ok) {
-           throw new Error(`Network response was not ok, status: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`Network response was not ok, status: ${response.status}`);
         
         const data = await response.json();
-        if (data.error) {
-            throw new Error(`Google Script Error: ${data.error}`);
-        }
+        if (data.error) throw new Error(`Google Script Error: ${data.error}`);
 
-        // Defensively process supplier specialization to prevent crashes from bad data in the sheet.
-        if (data.suppliers && Array.isArray(data.suppliers)) {
-            data.suppliers.forEach((s: any) => {
-                // The sheet can return strings, numbers, or other types instead of an array.
-                if (!Array.isArray(s.specialization)) {
-                    if (s.specialization && typeof s.specialization.toString === 'function') {
-                        // Convert to string, split by comma, and trim whitespace from each item.
-                        s.specialization = s.specialization.toString().split(',').map((item: string) => item.trim()).filter(Boolean);
-                    } else {
-                        // If it's something invalid (null, undefined), default to an empty array.
-                        s.specialization = [];
-                    }
-                }
-            });
-        }
-        
-        if (data.projects && Array.isArray(data.projects)) {
-             // Use a robust mapping that won't crash on a single bad entry.
-            data.projects = data.projects.reduce((acc: Project[], p: any, index: number) => {
-                try {
-                    // Ensure we are working with an object. A blank row in Sheets can sometimes result in null/undefined.
-                    if (p && typeof p === 'object' && p.id) { // Check for ID to ensure it's a valid row.
-                        acc.push(unflattenProjectFromApi(p));
-                    } else if (p && (Object.values(p).some(val => val !== ''))) { // If it's not a completely empty row
-                        // Log a warning if the data for a project is not in the expected format but not empty.
-                        console.warn(`Skipping invalid project data at row index ${index + 2} in 'Projects' sheet. Data:`, p);
-                    }
-                } catch (error) {
-                    // Log the error and the problematic data, then continue with the next project.
-                    console.error(`Error processing project at row index ${index + 2} in 'Projects' sheet.`, { error, projectData: p });
-                }
-                return acc;
-            }, []);
-        } else {
-            data.projects = [];
-        }
-        
-        if (!data.components) data.components = [];
-        if (!data.suppliers) data.suppliers = [];
+        return {
+            components: processSheetData(data.components, parseComponentFromApi, "Components (various)"),
+            suppliers: processSheetData(data.suppliers, parseSupplierFromApi, "Suppliers"),
+            projects: processSheetData(data.projects, unflattenProjectFromApi, "Projects")
+        };
 
-        return data;
     } catch (error) {
         console.error('Error in fetchAllData:', error);
         throw error;
