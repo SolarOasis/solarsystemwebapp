@@ -1,3 +1,4 @@
+
 export const ComponentTypes = {
   SolarPanel: 'Solar Panels',
   Inverter: 'Inverters',
@@ -88,21 +89,27 @@ export interface ClientInfo {
 export interface ProjectComponent {
   componentId: string;
   quantity: number;
+  costAtTimeOfAdd: number; // The component's cost when it was added to the project
+  sellingPrice?: number; // The final selling price per unit for this component, after markup/edits
 }
 
 export interface CostAnalysis {
-  componentCosts: { componentId: string; cost: number; quantity: number }[];
-  totalMaterialCost: number;
-  installationCharges: number;
-  commissioningCharges: number;
-  electricalCost: number;
+  componentCosts: { componentId: string; cost: number; quantity: number }[]; // This is for internal analysis PDF only.
+  totalMaterialCost: number; // Sum of component costs (costAtTimeOfAdd * quantity)
+  installationCharges: number; // Cost
+  commissioningCharges: number; // Cost
+  electricalCost: number; // Cost
+  installationSellingPrice?: number;
+  commissioningSellingPrice?: number;
+  electricalSellingPrice?: number;
   markupPercentage: number;
-  markupAmount: number;
-  totalProjectCost: number; // Before markup
-  finalSellingPrice: number; // After markup
+  totalProjectCost: number; // Total COGS = totalMaterialCost + all service charges costs
+  finalSellingPrice: number; // Sum of all individual selling prices
   profitMargin: number;
   profitMarginPercentage: number;
   costPerKw: number;
+  // Deprecated, calculated on the fly now
+  markupAmount: number;
 }
 
 export interface Project {

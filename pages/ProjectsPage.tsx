@@ -1,10 +1,10 @@
 
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AppContext } from '../context/AppContext';
-import { Project, AnyComponent, ClientInfo, ProjectComponent } from '../types';
+import { Project, AnyComponent, ClientInfo, ProjectComponent, CostAnalysis } from '../types';
 import { Card, Button, Table, Input, Select } from '../components/ui';
-import { Plus, ArrowLeft, Trash2, Copy, CloudUpload } from 'lucide-react';
+import { Plus, ArrowLeft, Trash2, Copy, CloudUpload, ChevronsRight } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -36,9 +36,21 @@ const ProjectList = ({ projects }: { projects: Project[] }) => {
             siteSurveyNotes: "",
             components: [],
             costAnalysis: {
-                componentCosts: [], totalMaterialCost: 0, installationCharges: 0, commissioningCharges: 0,
-                electricalCost: 0, markupPercentage: 20, markupAmount: 0, totalProjectCost: 0, finalSellingPrice: 0,
-                profitMargin: 0, profitMarginPercentage: 0, costPerKw: 0,
+                componentCosts: [], 
+                totalMaterialCost: 0, 
+                installationCharges: 0, 
+                commissioningCharges: 0,
+                electricalCost: 0, 
+                markupPercentage: 20, 
+                totalProjectCost: 0, 
+                finalSellingPrice: 0,
+                profitMargin: 0, 
+                profitMarginPercentage: 0, 
+                costPerKw: 0, 
+                markupAmount: 0,
+                installationSellingPrice: 0,
+                commissioningSellingPrice: 0,
+                electricalSellingPrice: 0
             }
         };
         const newProject = await addProject(newProjectData);
@@ -58,13 +70,15 @@ const ProjectList = ({ projects }: { projects: Project[] }) => {
     
     const handleDuplicateProject = (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
-        duplicateProject(id);
+        if (window.confirm('Are you sure you want to duplicate this project? This will create a copy with all components and costs.')) {
+            duplicateProject(id);
+        }
     }
 
 
     return (
         <Card title="Projects" actions={<Button onClick={handleCreateProject}><Plus className="mr-2 h-4 w-4" /> New Project</Button>}>
-            <Table headers={['Project Name', 'Client', 'System Capacity (kW)', 'Status', 'Total Cost', 'Actions']}>
+            <Table headers={['Project Name', 'Client', 'System Capacity (kW)', 'Status', 'Selling Price', 'Actions']}>
                 {projects.map(project => (
                     <tr key={project.id} className="cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/projects/${project.id}`)}>
                         <td className="whitespace-nowrap px-4 py-2 font-medium text-gray-900">{project.name}</td>
@@ -108,96 +122,142 @@ const ProjectDetails = ({ project: initialProject }: { project: Project }) => {
         acc[type].push(component);
         return acc;
     }, {} as Record<string, AnyComponent[]>);
-
+    
     const recalculateCosts = (proj: Project): Project => {
-        const componentCosts = proj.components.map(pc => {
-            const comp = allComponents.find(c => c.id === pc.componentId);
-            return { componentId: pc.componentId, quantity: pc.quantity, cost: comp?.cost || 0 };
-        });
-        const totalMaterialCost = componentCosts.reduce((acc, item) => acc + (item.cost * item.quantity), 0);
+        // 1. Calculate total material cost (COGS for materials) from locked-in costs
+        const totalMaterialCost = proj.components.reduce((acc, item) => acc + (item.costAtTimeOfAdd * item.quantity), 0);
+
+        // 2. Calculate total project cost (COGS for everything)
         const totalProjectCost = totalMaterialCost + proj.costAnalysis.installationCharges + proj.costAnalysis.commissioningCharges + proj.costAnalysis.electricalCost;
-        const markupAmount = totalProjectCost * (proj.costAnalysis.markupPercentage / 100);
-        const finalSellingPrice = totalProjectCost + markupAmount;
+
+        // 3. Calculate final selling price from individual editable selling prices
+        const totalComponentSellingPrice = proj.components.reduce((acc, item) => acc + ((item.sellingPrice || item.costAtTimeOfAdd) * item.quantity), 0);
+        
+        const installationSellingPrice = proj.costAnalysis.installationSellingPrice ?? proj.costAnalysis.installationCharges;
+        const commissioningSellingPrice = proj.costAnalysis.commissioningSellingPrice ?? proj.costAnalysis.commissioningCharges;
+        const electricalSellingPrice = proj.costAnalysis.electricalSellingPrice ?? proj.costAnalysis.electricalCost;
+        
+        const finalSellingPrice = totalComponentSellingPrice + installationSellingPrice + commissioningSellingPrice + electricalSellingPrice;
+
+        // 4. Calculate profit
         const profitMargin = finalSellingPrice - totalProjectCost;
         const profitMarginPercentage = finalSellingPrice > 0 ? (profitMargin / finalSellingPrice) * 100 : 0;
         const costPerKw = proj.systemCapacity > 0 ? finalSellingPrice / proj.systemCapacity : 0;
-        
+
         return {
             ...proj,
             costAnalysis: {
                 ...proj.costAnalysis,
-                componentCosts,
                 totalMaterialCost,
                 totalProjectCost,
-                markupAmount,
                 finalSellingPrice,
                 profitMargin,
                 profitMarginPercentage,
                 costPerKw,
+                installationSellingPrice,
+                commissioningSellingPrice,
+                electricalSellingPrice
             }
         };
     };
 
-    const handleProjectChange = <K extends keyof Project>(key: K, value: Project[K]) => {
-        setProject(prev => recalculateCosts({ ...prev, [key]: value }));
+    // Recalculate costs whenever the initial project prop changes (e.g., after a save)
+    useEffect(() => {
+      setProject(recalculateCosts(initialProject));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialProject]);
+
+
+    const handleProjectInfoChange = <K extends keyof Project>(key: K, value: Project[K]) => {
+        setProject(prev => ({ ...prev, [key]: value }));
     };
 
     const handleClientChange = <K extends keyof ClientInfo>(key: K, value: ClientInfo[K]) => {
-        setProject(prev => recalculateCosts({ ...prev, client: { ...prev.client, [key]: value } }));
+        setProject(prev => ({ ...prev, client: { ...prev.client, [key]: value } }));
     };
-
-    const handleCostChange = <K extends keyof Project['costAnalysis']>(key: K, value: Project['costAnalysis'][K]) => {
-        setProject(prev => recalculateCosts({ ...prev, costAnalysis: { ...prev.costAnalysis, [key]: value } }));
+    
+    const handleCostInputChange = <K extends keyof CostAnalysis>(key: K, value: string) => {
+        setProject(prev => ({ ...prev, costAnalysis: { ...prev.costAnalysis, [key]: parseFloat(value) || 0 } }));
     };
 
     const addComponentToProject = (componentId: string) => {
         if (!componentId) return;
+        const componentToAdd = allComponents.find(c => c.id === componentId);
+        if (!componentToAdd) return;
+        
         const existing = project.components.find(c => c.componentId === componentId);
         if (existing) {
             handleComponentQuantityChange(componentId, existing.quantity + 1);
         } else {
-            const newComponents = [...project.components, { componentId, quantity: 1 }];
-            handleProjectChange('components', newComponents);
+            const newProjectComponent: ProjectComponent = {
+                componentId,
+                quantity: 1,
+                costAtTimeOfAdd: componentToAdd.cost, // Lock in the cost
+                sellingPrice: componentToAdd.cost, // Default selling price to cost initially
+            };
+            const newComponents = [...project.components, newProjectComponent];
+            setProject(prev => ({...prev, components: newComponents}));
         }
     };
-
+    
     const handleComponentQuantityChange = (componentId: string, quantity: number) => {
         let newComponents: ProjectComponent[];
         if (quantity <= 0) {
             newComponents = project.components.filter(c => c.componentId !== componentId);
         } else {
-            newComponents = project.components.map(c => c.componentId === componentId ? { ...c, quantity } : c);
+            newComponents = project.components.map(c => c.componentId === componentId ? { ...c, quantity: quantity } : c);
         }
-        handleProjectChange('components', newComponents);
+        setProject(prev => ({...prev, components: newComponents}));
     };
     
+    const handleComponentSellingPriceChange = (componentId: string, price: number) => {
+        const newComponents = project.components.map(c => 
+            c.componentId === componentId ? { ...c, sellingPrice: price } : c
+        );
+        setProject(prev => ({...prev, components: newComponents}));
+    }
+
+    const handleApplyMarkup = () => {
+        const markup = project.costAnalysis.markupPercentage / 100;
+        
+        const updatedComponents = project.components.map(pc => ({
+            ...pc,
+            sellingPrice: pc.costAtTimeOfAdd * (1 + markup)
+        }));
+        
+        const updatedCostAnalysis: CostAnalysis = {
+            ...project.costAnalysis,
+            installationSellingPrice: project.costAnalysis.installationCharges * (1 + markup),
+            commissioningSellingPrice: project.costAnalysis.commissioningCharges * (1 + markup),
+            electricalSellingPrice: project.costAnalysis.electricalCost * (1 + markup),
+        };
+        
+        setProject(prev => ({
+            ...prev,
+            components: updatedComponents,
+            costAnalysis: updatedCostAnalysis
+        }));
+    };
+
     const handleSave = () => {
-        updateProject(project);
+        // Trigger a final recalculation before saving to ensure all derived values are correct
+        const finalProjectState = recalculateCosts(project);
+        updateProject(finalProjectState);
         alert("Project saved!");
     };
     
     const generateAndSavePdf = async (elementId: string, fileName: string, folderName: string) => {
+        const finalProjectState = recalculateCosts(project);
+        setProject(finalProjectState); // Ensure UI is up-to-date for PDF generation
+
+        // Wait for state to update before capturing
+        await new Promise(resolve => setTimeout(resolve, 100));
+
         const element = document.getElementById(elementId);
         if (element) {
             const canvas = await html2canvas(element, { scale: 2 });
             const pdf = new jsPDF('p', 'mm', 'a4');
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const canvasWidth = canvas.width;
-            const canvasHeight = canvas.height;
-            const ratio = pdfWidth / canvasWidth;
-            const newCanvasHeight = canvasHeight * ratio;
-            let heightLeft = newCanvasHeight;
-            let position = 0;
-
-            pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, position, pdfWidth, newCanvasHeight);
-            heightLeft -= pdf.internal.pageSize.getHeight();
-
-            while (heightLeft > 0) {
-                position = heightLeft - newCanvasHeight;
-                pdf.addPage();
-                pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, position, pdfWidth, newCanvasHeight);
-                heightLeft -= pdf.internal.pageSize.getHeight();
-            }
+            pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pdf.internal.pageSize.getWidth(), canvas.height * pdf.internal.pageSize.getWidth() / canvas.width);
             
             const base64String = pdf.output('datauristring');
             const base64Data = base64String.substring(base64String.indexOf(',') + 1);
@@ -209,43 +269,42 @@ const ProjectDetails = ({ project: initialProject }: { project: Project }) => {
         }
     };
 
-    const handleGenerateQuotePdf = () => {
-        generateAndSavePdf('quotation-template', `Quotation-${project.name.replace(/ /g, '_')}.pdf`, 'Quotations');
-    };
-
-    const handleGenerateInternalPdf = () => {
-        generateAndSavePdf('internal-cost-analysis-template', `Cost-Analysis-${project.name.replace(/ /g, '_')}.pdf`, 'Internal Cost Analysis');
-    };
+    const handleGenerateQuotePdf = () => generateAndSavePdf('quotation-template', `Quotation-${project.name.replace(/ /g, '_')}.pdf`, 'Quotations');
+    const handleGenerateInternalPdf = () => generateAndSavePdf('internal-cost-analysis-template', `Cost-Analysis-${project.name.replace(/ /g, '_')}.pdf`, 'Internal Cost Analysis');
     
+    // This effect recalculates costs whenever a dependency changes.
+    useEffect(() => {
+      const newProject = recalculateCosts(project);
+      if (JSON.stringify(newProject) !== JSON.stringify(project)) {
+        setProject(newProject);
+      }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [project.components, project.costAnalysis.installationCharges, project.costAnalysis.commissioningCharges, project.costAnalysis.electricalCost, project.costAnalysis.installationSellingPrice, project.costAnalysis.commissioningSellingPrice, project.costAnalysis.electricalSellingPrice]);
+
+
     return (
         <div className="space-y-6">
             <Button variant="ghost" onClick={() => navigate('/projects')}><ArrowLeft className="mr-2 h-4 w-4" /> Back to Projects</Button>
             <Card title="Project Details">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <Input label="Project Name" value={project.name} onChange={e => handleProjectChange('name', e.target.value)} />
-                    <Select
-                        label="Project Status"
-                        value={project.status}
-                        onChange={e => handleProjectChange('status', e.target.value as Project['status'])}
-                    >
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <Input label="Project Name" value={project.name} onChange={e => handleProjectInfoChange('name', e.target.value)} />
+                     <Select label="Project Status" value={project.status} onChange={e => handleProjectInfoChange('status', e.target.value as Project['status'])} >
                         <option value="Planning">Planning</option>
                         <option value="In Progress">In Progress</option>
                         <option value="Completed">Completed</option>
                         <option value="Cancelled">Cancelled</option>
                     </Select>
-                    <Input label="System Capacity (kW)" type="number" value={project.systemCapacity} onChange={e => handleProjectChange('systemCapacity', parseFloat(e.target.value))} />
+                    <Input label="System Capacity (kW)" type="number" value={project.systemCapacity} onChange={e => handleProjectInfoChange('systemCapacity', parseFloat(e.target.value))} />
                     <Input label="Client Name" value={project.client.name} onChange={e => handleClientChange('name', e.target.value)} />
                     <Input label="Client Contact" value={project.client.contact} onChange={e => handleClientChange('contact', e.target.value)} />
-                     <div className="md:col-span-2">
-                      <Input label="Client Address" value={project.client.address} onChange={e => handleClientChange('address', e.target.value)} />
-                    </div>
+                    <Input label="Client Address" value={project.client.address} onChange={e => handleClientChange('address', e.target.value)} />
                 </div>
             </Card>
 
-            <Card title="Component Selection">
+            <Card title="Component Selection & Pricing">
                 <div className="flex items-end gap-2 mb-4">
                     <Select label="Add Component" onChange={e => addComponentToProject(e.target.value)} value="">
-                        <option value="" disabled>Select a component...</option>
+                        <option value="" disabled>Select a component to add...</option>
                         {Object.entries(componentsByType).map(([type, comps]) => (
                             <optgroup key={type} label={type}>
                                 {comps.map(c => <option key={c.id} value={c.id}>{c.manufacturer} - {c.model}</option>)}
@@ -253,17 +312,18 @@ const ProjectDetails = ({ project: initialProject }: { project: Project }) => {
                         ))}
                     </Select>
                 </div>
-                <Table headers={['Component', 'Manufacturer', 'Quantity', 'Unit Cost', 'Total Cost', 'Actions']}>
+                <Table headers={['Component', 'Qty', 'Unit Cost', 'Unit Selling Price', 'Total Selling Price', 'Actions']}>
                     {project.components.map(pc => {
                         const component = allComponents.find(c => c.id === pc.componentId);
                         if (!component) return null;
+                        const sellingPrice = pc.sellingPrice ?? pc.costAtTimeOfAdd;
                         return (
                             <tr key={pc.componentId}>
-                                <td className="px-4 py-2">{component.model}</td>
-                                <td className="px-4 py-2">{component.manufacturer}</td>
+                                <td className="px-4 py-2 text-sm">{component.manufacturer} {component.model}</td>
                                 <td className="px-4 py-2"><Input type="number" min="0" value={pc.quantity} onChange={e => handleComponentQuantityChange(pc.componentId, parseInt(e.target.value))} className="w-20"/></td>
-                                <td className="px-4 py-2">{component.cost.toFixed(2)} AED</td>
-                                <td className="px-4 py-2">{(component.cost * pc.quantity).toFixed(2)} AED</td>
+                                <td className="px-4 py-2">{pc.costAtTimeOfAdd.toFixed(2)} AED</td>
+                                <td className="px-4 py-2"><Input type="number" min="0" step="0.01" value={sellingPrice.toFixed(2)} onChange={e => handleComponentSellingPriceChange(pc.componentId, parseFloat(e.target.value))} className="w-28"/></td>
+                                <td className="px-4 py-2 font-semibold">{(sellingPrice * pc.quantity).toFixed(2)} AED</td>
                                 <td className="px-4 py-2">
                                     <Button variant="danger" size="sm" onClick={() => handleComponentQuantityChange(pc.componentId, 0)}><Trash2 size={16}/></Button>
                                 </td>
@@ -274,19 +334,25 @@ const ProjectDetails = ({ project: initialProject }: { project: Project }) => {
             </Card>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card title="Cost Analysis">
+                <Card title="Costs & Markup">
                     <div className="space-y-2 text-sm">
-                        <div className="flex justify-between"><span className="text-gray-600">Total Material Cost:</span> <span className="font-semibold">{project.costAnalysis.totalMaterialCost.toFixed(2)} AED</span></div>
-                        <div className="flex justify-between items-center"><span className="text-gray-600">Installation Charges:</span> <Input type="number" value={project.costAnalysis.installationCharges} onChange={e => handleCostChange('installationCharges', parseFloat(e.target.value))} className="w-32 text-right" /></div>
-                        <div className="flex justify-between items-center"><span className="text-gray-600">Commissioning Charges:</span> <Input type="number" value={project.costAnalysis.commissioningCharges} onChange={e => handleCostChange('commissioningCharges', parseFloat(e.target.value))} className="w-32 text-right" /></div>
-                        <div className="flex justify-between items-center"><span className="text-gray-600">Electrical Cost:</span> <Input type="number" value={project.costAnalysis.electricalCost} onChange={e => handleCostChange('electricalCost', parseFloat(e.target.value))} className="w-32 text-right" /></div>
-                        <div className="flex justify-between font-bold border-t pt-2 mt-2"><span className="text-gray-800">Total Project Cost:</span> <span>{project.costAnalysis.totalProjectCost.toFixed(2)} AED</span></div>
+                        <div className="flex justify-between font-bold"><span className="text-gray-600">Total Material Cost:</span> <span>{project.costAnalysis.totalMaterialCost.toFixed(2)} AED</span></div>
+                        <div className="flex justify-between items-center"><span className="text-gray-600">Installation Charges Cost:</span> <Input type="number" value={project.costAnalysis.installationCharges} onChange={e => handleCostInputChange('installationCharges', e.target.value)} className="w-32 text-right" /></div>
+                        <div className="flex justify-between items-center"><span className="text-gray-600">Commissioning Charges Cost:</span> <Input type="number" value={project.costAnalysis.commissioningCharges} onChange={e => handleCostInputChange('commissioningCharges', e.target.value)} className="w-32 text-right" /></div>
+                        <div className="flex justify-between items-center"><span className="text-gray-600">Electrical Cost:</span> <Input type="number" value={project.costAnalysis.electricalCost} onChange={e => handleCostInputChange('electricalCost', e.target.value)} className="w-32 text-right" /></div>
+                        <div className="flex justify-between font-bold text-lg border-t pt-2 mt-2"><span className="text-gray-800">Total Project Cost (COGS):</span> <span>{project.costAnalysis.totalProjectCost.toFixed(2)} AED</span></div>
+                    </div>
+                     <div className="flex items-center gap-4 mt-4 pt-4 border-t">
+                        <Input label="Markup %" type="number" value={project.costAnalysis.markupPercentage} onChange={e => handleCostInputChange('markupPercentage', e.target.value)} className="w-32"/>
+                        <Button onClick={handleApplyMarkup} variant="secondary" className="mt-auto"><ChevronsRight className="mr-2 h-4 w-4"/> Apply Markup</Button>
                     </div>
                 </Card>
-                <Card title="Pricing & Profitability">
+                <Card title="Selling Prices & Profitability">
                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between items-center"><span className="text-gray-600">Markup %:</span> <Input type="number" value={project.costAnalysis.markupPercentage} onChange={e => handleCostChange('markupPercentage', parseFloat(e.target.value))} className="w-32 text-right" /></div>
-                        <div className="flex justify-between"><span className="text-gray-600">Markup Amount:</span> <span className="font-semibold">{project.costAnalysis.markupAmount.toFixed(2)} AED</span></div>
+                         <div className="flex justify-between items-center"><span className="text-gray-600">Installation Selling Price:</span> <Input type="number" min="0" value={(project.costAnalysis.installationSellingPrice ?? 0).toFixed(2)} onChange={e => handleCostInputChange('installationSellingPrice', e.target.value)} className="w-32 text-right" /></div>
+                         <div className="flex justify-between items-center"><span className="text-gray-600">Commissioning Selling Price:</span> <Input type="number" min="0" value={(project.costAnalysis.commissioningSellingPrice ?? 0).toFixed(2)} onChange={e => handleCostInputChange('commissioningSellingPrice', e.target.value)} className="w-32 text-right" /></div>
+                         <div className="flex justify-between items-center"><span className="text-gray-600">Electrical Selling Price:</span> <Input type="number" min="0" value={(project.costAnalysis.electricalSellingPrice ?? 0).toFixed(2)} onChange={e => handleCostInputChange('electricalSellingPrice', e.target.value)} className="w-32 text-right" /></div>
+
                         <div className="flex justify-between text-lg font-bold border-t pt-2 mt-2"><span className="text-gray-800">Final Selling Price:</span> <span className="text-green-600">{project.costAnalysis.finalSellingPrice.toFixed(2)} AED</span></div>
                         <div className="flex justify-between text-green-700 font-bold"><span className="text-gray-600">Profit Margin:</span> <span>{project.costAnalysis.profitMargin.toFixed(2)} AED ({project.costAnalysis.profitMarginPercentage.toFixed(2)}%)</span></div>
                         <div className="flex justify-between"><span className="text-gray-600">Cost per kW:</span> <span className="font-semibold">{project.costAnalysis.costPerKw.toFixed(2)} AED</span></div>
@@ -300,9 +366,8 @@ const ProjectDetails = ({ project: initialProject }: { project: Project }) => {
                  <Button onClick={handleGenerateQuotePdf}><CloudUpload className="mr-2 h-4 w-4" /> Save Quote to Drive</Button>
             </div>
             
-            {/* Hidden element for PDF generation */}
-            <div id="pdf-templates-container" className="fixed -left-[9999px] top-0 space-y-10">
-                <QuotationTemplate project={project} allComponents={allComponents}/>
+            <div className="fixed -left-[9999px] top-0 space-y-10">
+                <QuotationTemplate project={project} allComponents={allComponents} />
                 <InternalCostAnalysisTemplate project={project} allComponents={allComponents} />
             </div>
 
@@ -311,9 +376,12 @@ const ProjectDetails = ({ project: initialProject }: { project: Project }) => {
 };
 
 const QuotationTemplate = ({ project, allComponents }: { project: Project, allComponents: AnyComponent[] }) => {
-    const totalInstallationCost = project.costAnalysis.installationCharges + project.costAnalysis.commissioningCharges + project.costAnalysis.electricalCost;
-    const subtotalMaterials = project.costAnalysis.finalSellingPrice - totalInstallationCost;
-
+    const { costAnalysis, components } = project;
+    const totalComponentSellingPrice = components.reduce((acc, pc) => acc + ((pc.sellingPrice ?? pc.costAtTimeOfAdd) * pc.quantity), 0);
+    const totalServicesSellingPrice = (costAnalysis.installationSellingPrice ?? costAnalysis.installationCharges) + 
+                                      (costAnalysis.commissioningSellingPrice ?? costAnalysis.commissioningCharges) + 
+                                      (costAnalysis.electricalSellingPrice ?? costAnalysis.electricalCost);
+    
     return (
     <div id="quotation-template" className="bg-white p-12 w-[800px] text-gray-800 font-sans">
         <header className="flex justify-between items-center border-b-4 border-brand-secondary pb-4">
@@ -340,29 +408,22 @@ const QuotationTemplate = ({ project, allComponents }: { project: Project, allCo
         </section>
 
         <section className="my-8">
-            <h3 className="font-bold text-brand-primary border-b-2 border-gray-200 pb-2 mb-2">Project Overview</h3>
-            <p>System Capacity: <span className="font-semibold">{project.systemCapacity} kW</span></p>
-            <p>Location: <span className="font-semibold">{project.location || project.client.address}</span></p>
-        </section>
-
-        <section className="my-8">
             <h3 className="font-bold text-brand-primary border-b-2 border-gray-200 pb-2 mb-2">Component List</h3>
             <table className="w-full text-left text-sm">
                 <thead className="bg-gray-100">
-                    <tr><th className="p-2">Item</th><th className="p-2">Description</th><th className="p-2 text-center">Qty</th><th className="p-2 text-right">Unit Price</th><th className="p-2 text-right">Total</th></tr>
+                    <tr><th className="p-2">Item</th><th className="p-2 text-center">Qty</th><th className="p-2 text-right">Unit Price</th><th className="p-2 text-right">Total</th></tr>
                 </thead>
                 <tbody>
-                {project.components.map(pc => {
-                    const c = allComponents.find(ac => ac.id === pc.componentId);
-                    if (!c) return null;
-                    const unitPrice = project.costAnalysis.totalMaterialCost > 0 ? (subtotalMaterials / project.costAnalysis.totalMaterialCost) * c.cost : 0;
+                {components.map(pc => {
+                    const component = allComponents.find(c => c.id === pc.componentId);
+                    const componentName = component ? `${component.manufacturer} ${component.model}` : pc.componentId;
+                    const sellingPrice = pc.sellingPrice ?? pc.costAtTimeOfAdd;
                     return (
-                        <tr key={c.id} className="border-b">
-                            <td className="p-2">{c.type}</td>
-                            <td className="p-2">{c.manufacturer} {c.model}</td>
+                        <tr key={pc.componentId} className="border-b">
+                            <td className="p-2">{componentName}</td>
                             <td className="p-2 text-center">{pc.quantity}</td>
-                            <td className="p-2 text-right">{unitPrice.toFixed(2)} AED</td>
-                            <td className="p-2 text-right">{(unitPrice * pc.quantity).toFixed(2)} AED</td>
+                            <td className="p-2 text-right">{sellingPrice.toFixed(2)} AED</td>
+                            <td className="p-2 text-right">{(sellingPrice * pc.quantity).toFixed(2)} AED</td>
                         </tr>
                     )
                 })}
@@ -376,15 +437,15 @@ const QuotationTemplate = ({ project, allComponents }: { project: Project, allCo
                     <tbody>
                         <tr className="border-t-2">
                             <td className="p-2 font-semibold text-gray-600">Subtotal (Materials):</td>
-                            <td className="p-2">{subtotalMaterials.toFixed(2)} AED</td>
+                            <td className="p-2">{totalComponentSellingPrice.toFixed(2)} AED</td>
                         </tr>
                         <tr>
                             <td className="p-2 font-semibold text-gray-600">Installation & Services:</td>
-                            <td className="p-2">{totalInstallationCost.toFixed(2)} AED</td>
+                            <td className="p-2">{totalServicesSellingPrice.toFixed(2)} AED</td>
                         </tr>
                         <tr className="bg-brand-primary text-white text-lg font-bold">
                             <td className="p-3">Total Amount Due:</td>
-                            <td className="p-3">{project.costAnalysis.finalSellingPrice.toFixed(2)} AED</td>
+                            <td className="p-3">{costAnalysis.finalSellingPrice.toFixed(2)} AED</td>
                         </tr>
                     </tbody>
                 </table>
@@ -393,12 +454,7 @@ const QuotationTemplate = ({ project, allComponents }: { project: Project, allCo
         
         <footer className="mt-12 pt-4 border-t text-xs text-gray-500">
             <h4 className="font-bold mb-2">Terms & Conditions</h4>
-            <ul className="list-disc list-inside space-y-1">
-                <li>This quotation is valid for 30 days from the date of issue.</li>
-                <li>Payment terms: 50% upfront, 50% upon project completion.</li>
-                <li>All components are subject to availability.</li>
-            </ul>
-            <p className="mt-8 text-center">Thank you for considering Solar Oasis for your renewable energy needs!</p>
+            <p>...</p>
         </footer>
     </div>
     )
@@ -407,7 +463,7 @@ const QuotationTemplate = ({ project, allComponents }: { project: Project, allCo
 const InternalCostAnalysisTemplate = ({ project, allComponents }: { project: Project, allComponents: AnyComponent[] }) => {
     return (
         <div id="internal-cost-analysis-template" className="bg-white p-12 w-[800px] text-gray-800 font-sans">
-            <header className="flex justify-between items-center border-b-4 border-brand-dark pb-4">
+             <header className="flex justify-between items-center border-b-4 border-brand-dark pb-4">
                 <div>
                     <h1 className="text-4xl font-bold text-brand-primary">Solar Oasis</h1>
                     <p className="text-gray-600">Internal Document - Confidential</p>
@@ -418,61 +474,55 @@ const InternalCostAnalysisTemplate = ({ project, allComponents }: { project: Pro
             <section className="my-8">
                 <h3 className="font-bold text-gray-500 mb-2">PROJECT DETAILS</h3>
                 <p><strong>Project Name:</strong> {project.name}</p>
-                <p><strong>Project ID:</strong> {project.id}</p>
                 <p><strong>Client:</strong> {project.client.name}</p>
-                <p><strong>System Capacity:</strong> {project.systemCapacity} kW</p>
             </section>
-
-            <section className="my-8">
-                <h3 className="font-bold text-brand-primary border-b-2 border-gray-200 pb-2 mb-2">Cost Breakdown</h3>
-                <div className="space-y-2">
-                    <div className="flex justify-between"><span className="text-gray-600">Total Material Cost:</span> <span className="font-semibold">{project.costAnalysis.totalMaterialCost.toFixed(2)} AED</span></div>
-                    <div className="flex justify-between"><span className="text-gray-600">Installation Charges:</span> <span className="font-semibold">{project.costAnalysis.installationCharges.toFixed(2)} AED</span></div>
-                    <div className="flex justify-between"><span className="text-gray-600">Commissioning Charges:</span> <span className="font-semibold">{project.costAnalysis.commissioningCharges.toFixed(2)} AED</span></div>
-                    <div className="flex justify-between"><span className="text-gray-600">Electrical Cost:</span> <span className="font-semibold">{project.costAnalysis.electricalCost.toFixed(2)} AED</span></div>
-                    <div className="flex justify-between font-bold border-t pt-2 mt-2"><span className="text-gray-800">Total Project Cost (COGS):</span> <span>{project.costAnalysis.totalProjectCost.toFixed(2)} AED</span></div>
+            
+            <section className="my-8 grid grid-cols-2 gap-8">
+                <div>
+                  <h3 className="font-bold text-brand-primary border-b-2 border-gray-200 pb-2 mb-2">Cost Breakdown</h3>
+                  <div className="space-y-1 text-sm">
+                      <div className="flex justify-between"><span className="text-gray-600">Total Material Cost:</span> <span className="font-semibold">{project.costAnalysis.totalMaterialCost.toFixed(2)} AED</span></div>
+                      <div className="flex justify-between"><span className="text-gray-600">Installation Charges:</span> <span className="font-semibold">{project.costAnalysis.installationCharges.toFixed(2)} AED</span></div>
+                      <div className="flex justify-between"><span className="text-gray-600">Commissioning Charges:</span> <span className="font-semibold">{project.costAnalysis.commissioningCharges.toFixed(2)} AED</span></div>
+                      <div className="flex justify-between"><span className="text-gray-600">Electrical Cost:</span> <span className="font-semibold">{project.costAnalysis.electricalCost.toFixed(2)} AED</span></div>
+                      <div className="flex justify-between font-bold border-t pt-2 mt-2"><span className="text-gray-800">Total Project Cost (COGS):</span> <span>{project.costAnalysis.totalProjectCost.toFixed(2)} AED</span></div>
+                  </div>
+                </div>
+                 <div>
+                    <h3 className="font-bold text-brand-primary border-b-2 border-gray-200 pb-2 mb-2">Pricing & Profitability</h3>
+                     <div className="space-y-1 text-sm">
+                        <div className="flex justify-between text-base font-bold"><span className="text-gray-800">Final Selling Price:</span> <span className="text-green-600">{project.costAnalysis.finalSellingPrice.toFixed(2)} AED</span></div>
+                        <div className="flex justify-between text-base text-green-700 font-bold"><span className="text-gray-800">Gross Profit Margin:</span> <span>{project.costAnalysis.profitMargin.toFixed(2)} AED</span></div>
+                        <div className="flex justify-between text-base text-green-700 font-bold"><span className="text-gray-800">Gross Profit Margin %:</span> <span>{project.costAnalysis.profitMarginPercentage.toFixed(2)}%</span></div>
+                    </div>
                 </div>
             </section>
 
              <section className="my-8">
-                <h3 className="font-bold text-brand-primary border-b-2 border-gray-200 pb-2 mb-2">Pricing & Profitability Analysis</h3>
-                 <div className="space-y-2">
-                    <div className="flex justify-between"><span className="text-gray-600">Markup Percentage:</span> <span className="font-semibold">{project.costAnalysis.markupPercentage.toFixed(2)}%</span></div>
-                    <div className="flex justify-between"><span className="text-gray-600">Markup Amount:</span> <span className="font-semibold">{project.costAnalysis.markupAmount.toFixed(2)} AED</span></div>
-                    <div className="flex justify-between text-lg font-bold"><span className="text-gray-800">Final Selling Price:</span> <span className="text-green-600">{project.costAnalysis.finalSellingPrice.toFixed(2)} AED</span></div>
-                    <div className="flex justify-between text-lg text-green-700 font-bold"><span className="text-gray-800">Gross Profit Margin:</span> <span>{project.costAnalysis.profitMargin.toFixed(2)} AED</span></div>
-                    <div className="flex justify-between text-lg text-green-700 font-bold"><span className="text-gray-800">Gross Profit Margin %:</span> <span>{project.costAnalysis.profitMarginPercentage.toFixed(2)}%</span></div>
-                    <div className="flex justify-between"><span className="text-gray-600">Cost per kW:</span> <span className="font-semibold">{project.costAnalysis.costPerKw.toFixed(2)} AED</span></div>
-                </div>
-            </section>
-            
-            <section className="my-8">
-                <h3 className="font-bold text-brand-primary border-b-2 border-gray-200 pb-2 mb-2">Component Details (at cost)</h3>
+                <h3 className="font-bold text-brand-primary border-b-2 border-gray-200 pb-2 mb-2">Component Details (Cost vs. Sell)</h3>
                 <table className="w-full text-left text-sm">
                     <thead className="bg-gray-100">
-                        <tr><th className="p-2">Item</th><th className="p-2">Description</th><th className="p-2 text-center">Qty</th><th className="p-2 text-right">Unit Cost</th><th className="p-2 text-right">Total Cost</th></tr>
+                        <tr><th className="p-2">Item</th><th className="p-2 text-center">Qty</th><th className="p-2 text-right">Unit Cost</th><th className="p-2 text-right">Unit Sell</th><th className="p-2 text-right">Total Cost</th><th className="p-2 text-right">Total Sell</th></tr>
                     </thead>
                     <tbody>
-                    {project.costAnalysis.componentCosts.map(pc => {
-                        const c = allComponents.find(ac => ac.id === pc.componentId);
-                        if (!c) return null;
+                    {project.components.map(pc => {
+                        const component = allComponents.find(c => c.id === pc.componentId);
+                        const componentName = component ? `${component.manufacturer} ${component.model}` : pc.componentId;
+                        const sellingPrice = pc.sellingPrice ?? pc.costAtTimeOfAdd;
                         return (
-                            <tr key={c.id} className="border-b">
-                                <td className="p-2">{c.type}</td>
-                                <td className="p-2">{c.manufacturer} {c.model}</td>
+                            <tr key={pc.componentId} className="border-b">
+                                <td className="p-2">{componentName}</td>
                                 <td className="p-2 text-center">{pc.quantity}</td>
-                                <td className="p-2 text-right">{pc.cost.toFixed(2)} AED</td>
-                                <td className="p-2 text-right">{(pc.cost * pc.quantity).toFixed(2)} AED</td>
+                                <td className="p-2 text-right">{pc.costAtTimeOfAdd.toFixed(2)}</td>
+                                <td className="p-2 text-right font-semibold text-green-700">{sellingPrice.toFixed(2)}</td>
+                                <td className="p-2 text-right">{(pc.costAtTimeOfAdd * pc.quantity).toFixed(2)}</td>
+                                <td className="p-2 text-right font-semibold">{(sellingPrice * pc.quantity).toFixed(2)}</td>
                             </tr>
                         )
                     })}
                     </tbody>
                 </table>
             </section>
-
-            <footer className="mt-12 pt-4 border-t text-xs text-gray-500 text-center">
-                Generated on {new Date().toLocaleString()}
-            </footer>
         </div>
     );
 };

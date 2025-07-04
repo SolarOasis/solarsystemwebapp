@@ -6,6 +6,7 @@ import ComponentsPage from './pages/ComponentsPage';
 import ProjectsPage from './pages/ProjectsPage';
 import SuppliersPage from './pages/SuppliersPage';
 import SettingsPage from './pages/SettingsPage';
+import LoginPage from './pages/LoginPage';
 import { AppContext } from './context/AppContext';
 import { Sun, Wrench, Package, Users, BarChart3, Menu, X, Loader, Settings } from 'lucide-react';
 
@@ -18,13 +19,26 @@ const navItems = [
 ];
 
 const App = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(sessionStorage.getItem('isAuthenticated') === 'true');
   const { state, loadInitialData } = useContext(AppContext);
   const { loading, error } = state;
 
   useEffect(() => {
-    loadInitialData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (isAuthenticated) {
+      loadInitialData();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
+  
+  const handleLoginSuccess = () => {
+    sessionStorage.setItem('isAuthenticated', 'true');
+    setIsAuthenticated(true);
+  };
+
+  if (!isAuthenticated) {
+    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+  }
+
 
   return (
     <HashRouter>
