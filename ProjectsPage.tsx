@@ -1,3 +1,4 @@
+
 import React, { useState, useContext, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AppContext } from '../context/AppContext';
@@ -42,7 +43,7 @@ const ProjectList = ({ projects }: { projects: Project[] }) => {
                 profitMargin: 0, 
                 profitMarginPercentage: 0, 
                 costPerKw: 0, 
-                markupAmount: 0,
+                markupAmount: 0, // Deprecated
             }
         };
         const newProject = await addProject(newProjectData);
@@ -323,17 +324,17 @@ const ProjectDetails = ({ project: initialProject }: { project: Project }) => {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
                 <Card title="Costs & Markup">
                     <div className="space-y-4">
-                         <div className="grid grid-cols-2 gap-y-2 gap-x-4 items-center text-sm">
+                        <div className="grid grid-cols-2 gap-y-2 gap-x-4 items-center text-sm">
                             <span className="text-gray-600 font-bold">Total Material Cost:</span> 
                             <span className="font-bold text-right">{project.costAnalysis.totalMaterialCost.toFixed(2)} AED</span>
                             
-                            <label className="text-gray-600 self-center">Installation Charges Cost:</label> 
+                            <span className="text-gray-600">Installation Charges Cost:</span> 
                             <Input type="number" value={project.costAnalysis.installationCharges || ''} onChange={e => handleCostInputChange('installationCharges', e.target.value)} className="w-full text-right" placeholder="e.g., 1500"/>
                             
-                            <label className="text-gray-600 self-center">Commissioning Charges Cost:</label> 
+                            <span className="text-gray-600">Commissioning Charges Cost:</span> 
                             <Input type="number" value={project.costAnalysis.commissioningCharges || ''} onChange={e => handleCostInputChange('commissioningCharges', e.target.value)} className="w-full text-right" placeholder="e.g., 500"/>
                             
-                            <label className="text-gray-600 self-center">Electrical Cost:</label> 
+                            <span className="text-gray-600">Electrical Cost:</span> 
                             <Input type="number" value={project.costAnalysis.electricalCost || ''} onChange={e => handleCostInputChange('electricalCost', e.target.value)} className="w-full text-right" placeholder="e.g., 800"/>
                             
                             <div className="col-span-2 border-t mt-2 pt-2"></div>
@@ -349,16 +350,16 @@ const ProjectDetails = ({ project: initialProject }: { project: Project }) => {
                 </Card>
                 <Card title="Selling Prices & Profitability">
                      <div className="grid grid-cols-2 gap-y-2 gap-x-4 items-center text-sm">
-                         <span className="text-gray-600 font-bold">Total Components Selling Price:</span>
+                         <span className="text-gray-600">Total Components Selling Price:</span>
                          <span className="font-semibold text-right">{totalComponentSellingPrice.toFixed(2)} AED</span>
 
-                         <label className="text-gray-600 self-center">Installation Selling Price:</label> 
+                         <span className="text-gray-600">Installation Selling Price:</span> 
                          <Input type="number" min="0" value={(project.costAnalysis.installationSellingPrice ?? '')} onChange={e => handleCostInputChange('installationSellingPrice', e.target.value)} className="w-full text-right" placeholder="e.g., 2000"/>
                          
-                         <label className="text-gray-600 self-center">Commissioning Selling Price:</label> 
+                         <span className="text-gray-600">Commissioning Selling Price:</span> 
                          <Input type="number" min="0" value={(project.costAnalysis.commissioningSellingPrice ?? '')} onChange={e => handleCostInputChange('commissioningSellingPrice', e.target.value)} className="w-full text-right" placeholder="e.g., 750"/>
                          
-                         <label className="text-gray-600 self-center">Electrical Selling Price:</label> 
+                         <span className="text-gray-600">Electrical Selling Price:</span> 
                          <Input type="number" min="0" value={(project.costAnalysis.electricalSellingPrice ?? '')} onChange={e => handleCostInputChange('electricalSellingPrice', e.target.value)} className="w-full text-right" placeholder="e.g., 1000"/>
                          
                          <div className="col-span-2 border-t mt-2 pt-2"></div>
