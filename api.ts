@@ -1,4 +1,3 @@
-
 import { AnyComponent, Supplier, Project, ProjectComponent, ComponentType, ComponentTypes } from '../types';
 
 const getApiUrl = (): string | null => {
@@ -110,17 +109,17 @@ const parseJsonField = <T>(val: any, defaultVal: T): T => {
 // --- Resilient, Type-safe Parsers for Data from Google Sheets ---
 
 const parseComponentFromApi = (c: any): AnyComponent | null => {
-    if (!c || !c.id || !c.type || !Object.values(ComponentTypes).includes(c.type as any)) {
+    if (!c || !c.id || String(c.id).trim() === '' || !c.type || !Object.values(ComponentTypes).includes(c.type as any)) {
         console.warn('Skipping component with invalid/missing id or type:', c);
         return null;
     }
 
     const base = {
-        id: c.id,
+        id: String(c.id),
         type: c.type as ComponentType,
-        manufacturer: c.manufacturer || '',
-        model: c.model || '',
-        supplierId: c.supplierId || '',
+        manufacturer: String(c.manufacturer || 'N/A'),
+        model: String(c.model || 'N/A'),
+        supplierId: String(c.supplierId || ''),
         cost: parseOptionalNumber(c.cost),
     };
 
@@ -148,53 +147,67 @@ const parseComponentFromApi = (c: any): AnyComponent | null => {
         case ComponentTypes.ElectricCharger:
             return { ...base, chargingSpeed: parseOptionalNumber(c.chargingSpeed), connectorType: c.connectorType || undefined };
         default:
-             // This case should not be reached due to the initial check, but provides a fallback.
             return null;
     }
 };
 
 const parseSupplierFromApi = (s: any): Supplier | null => {
-    if (!s || !s.id || !s.name) {
-        console.warn(`Skipping invalid supplier row (missing id or name):`, s);
+    if (!s || !s.id || String(s.id).trim() === '') {
+        console.warn(`Skipping invalid supplier row (missing id):`, s);
         return null;
     }
     
     let specialization: ComponentType[] = [];
     if (s.specialization) {
         if (!Array.isArray(s.specialization)) {
-            // It's likely a comma-separated string from the sheet
-            specialization = s.specialization.toString().split(',').map((item: string) => item.trim()).filter(Boolean) as ComponentType[];
+            specialization = String(s.specialization).split(',').map((item: string) => item.trim()).filter(Boolean) as ComponentType[];
         } else {
             specialization = s.specialization;
         }
     }
     
     return {
-        id: s.id,
-        name: s.name,
-        contactPerson: s.contactPerson || '',
-        phone: s.phone || '',
-        email: s.email || '',
-        address: s.address || '',
+        id: String(s.id),
+        name: String(s.name || `Unnamed Supplier`),
+        contactPerson: String(s.contactPerson || ''),
+        phone: String(s.phone || ''),
+        email: String(s.email || ''),
+        address: String(s.address || ''),
         specialization,
     };
 };
 
 const unflattenProjectFromApi = (p: any): Project | null => {
-    if (!p || !p.id || !p.name) {
-        console.warn(`Skipping invalid project row (missing id or name):`, p);
+    if (!p || !p.id || String(p.id).trim() === '') {
+        console.warn(`Skipping invalid project row (missing id):`, p);
         return null;
     }
+
+    // Deep-parse the components array to ensure type safety for calculations.
+    const components = parseJsonField<any[]>(p.components, []).map(pc => ({
+        componentId: String(pc.componentId),
+        quantity: parseRequiredNumber(pc.quantity),
+        costAtTimeOfAdd: parseRequiredNumber(pc.costAtTimeOfAdd),
+        sellingPrice: parseOptionalNumber(pc.sellingPrice),
+    })).filter(pc => pc.componentId); // Ensure componentId exists
+
     return {
-        id: p.id,
-        name: p.name,
-        location: p.location || '',
+        id: String(p.id),
+        name: String(p.name || `Project ${p.id.slice(0, 6).toUpperCase()}`),
+        location: String(p.location || ''),
         systemCapacity: parseRequiredNumber(p.systemCapacity),
-        status: p.status || 'Planning',
-        siteSurveyNotes: p.siteSurveyNotes || '',
-        client: { name: p.clientName || '', contact: p.clientContact || '', address: p.clientAddress || '' },
-        timeline: { startDate: p.timelineStartDate || '', endDate: p.timelineEndDate || '' },
-        components: parseJsonField<ProjectComponent[]>(p.components, []),
+        status: (p.status || 'Planning') as Project['status'],
+        siteSurveyNotes: String(p.siteSurveyNotes || ''),
+        client: { 
+            name: String(p.clientName || 'Unnamed Client'), 
+            contact: String(p.clientContact || ''), 
+            address: String(p.clientAddress || '') 
+        },
+        timeline: { 
+            startDate: String(p.timelineStartDate || ''), 
+            endDate: String(p.timelineEndDate || '') 
+        },
+        components: components,
         costAnalysis: {
             componentCosts: parseJsonField(p.costAnalysis_componentCosts, []),
             totalMaterialCost: parseRequiredNumber(p.costAnalysis_totalMaterialCost),
@@ -224,9 +237,7 @@ const processSheetData = <T>(items: any[], parser: (item: any) => T | null, shee
     return items
         .map((item, index) => {
             try {
-                // Only process items that look like valid data objects.
-                if (item && typeof item === 'object') {
-                    // The parser is responsible for validation (e.g., checking for ID) and returning null if invalid.
+                if (item && typeof item === 'object' && Object.keys(item).length > 0) {
                     return parser(item);
                 }
                 return null;
@@ -235,7 +246,7 @@ const processSheetData = <T>(items: any[], parser: (item: any) => T | null, shee
                 return null; // Ensure loop continues
             }
         })
-        .filter((item): item is T => item !== null); // Filter out any nulls from invalid or erroring rows.
+        .filter((item): item is T => item !== null);
 }
 
 
@@ -277,18 +288,18 @@ export const updateSupplier = (supplier: Supplier) => postAction('updateSupplier
 export const deleteSupplier = (id: string) => postAction('deleteSupplier', { id });
 
 // Project actions
-export const addProject = async (project: Omit<Project, 'id'>) => {
+export const addProject = async (project: Omit<Project, 'id'>): Promise<Project | undefined> => {
     const result = await postAction('addProject', flattenProjectForApi(project));
-    return unflattenProjectFromApi(result);
+    return unflattenProjectFromApi(result) ?? undefined;
 };
-export const updateProject = async (project: Project) => {
+export const updateProject = async (project: Project): Promise<Project | undefined> => {
     const result = await postAction('updateProject', flattenProjectForApi(project));
-    return unflattenProjectFromApi(result);
+    return unflattenProjectFromApi(result) ?? undefined;
 };
 export const deleteProject = (id: string) => postAction('deleteProject', { id });
-export const duplicateProject = async (id: string) => {
+export const duplicateProject = async (id: string): Promise<Project | undefined> => {
     const result = await postAction('duplicateProject', { id });
-    return unflattenProjectFromApi(result);
+    return unflattenProjectFromApi(result) ?? undefined;
 };
 
 // New PDF action
