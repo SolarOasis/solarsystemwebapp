@@ -1,3 +1,4 @@
+
 import React, { createContext, useReducer, useCallback } from 'react';
 import { AppState, AppAction, AnyComponent, Supplier, Project } from '../types';
 import * as api from '../services/api';
@@ -64,13 +65,15 @@ export const AppContext = createContext<{
     loadInitialData: () => void;
     addComponent: (component: Omit<AnyComponent, 'id'>) => Promise<AnyComponent | undefined>;
     updateComponent: (component: AnyComponent) => Promise<void>;
-    deleteComponent: (id: string) => Promise<void>;
+    deleteComponent: (component: {id: string, type: string}) => Promise<void>;
     addSupplier: (supplier: Omit<Supplier, 'id'>) => Promise<Supplier | undefined>;
     updateSupplier: (supplier: Supplier) => Promise<void>;
     deleteSupplier: (id: string) => Promise<void>;
     addProject: (project: Omit<Project, 'id'>) => Promise<Project | undefined>;
     updateProject: (project: Project) => Promise<void>;
     deleteProject: (id: string) => Promise<void>;
+    duplicateProject: (id: string) => Promise<Project | undefined>;
+    savePdfToDrive: (fileName: string, folderName: string, base64Data: string) => Promise<{fileUrl: string} | undefined>;
 }>({
     state: initialState,
     loadInitialData: () => {},
@@ -83,6 +86,8 @@ export const AppContext = createContext<{
     addProject: async () => undefined,
     updateProject: async () => {},
     deleteProject: async () => {},
+    duplicateProject: async () => undefined,
+    savePdfToDrive: async () => undefined,
 });
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -91,20 +96,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const loadInitialData = useCallback(async () => {
         dispatch({ type: 'SET_LOADING', payload: true });
         
-        const scriptUrl = localStorage.getItem('googleAppsScriptUrl');
-        if (!scriptUrl) {
-            dispatch({ type: 'SET_ERROR', payload: 'Google Apps Script URL is not configured.' });
-             // Load empty data to prevent crashes on pages
-            dispatch({ type: 'SET_INITIAL_DATA', payload: { components: [], suppliers: [], projects: [] } });
-            return;
-        }
-
         try {
             const data = await api.fetchAllData();
             dispatch({ type: 'SET_INITIAL_DATA', payload: data });
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Failed to load data from Google Script.';
-            dispatch({ type: 'SET_ERROR', payload: `${errorMessage} Please check the URL in Settings or your script's permissions.` });
+            const finalMessage = errorMessage.includes("administrator") 
+              ? errorMessage 
+              : `${errorMessage} Please check your Vercel environment variables or your script's permissions.`;
+            dispatch({ type: 'SET_ERROR', payload: finalMessage });
+            // Load empty data to prevent crashes on pages
+            dispatch({ type: 'SET_INITIAL_DATA', payload: { components: [], suppliers: [], projects: [] } });
         }
     }, []);
 
@@ -133,7 +135,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dispatch({ type: 'SET_LOADING', payload: true });
         try {
             const result = await apiFunc(data);
-            dispatch(successAction(result));
+            if (result) {
+                dispatch(successAction(result));
+            }
             return result;
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Operation failed';
@@ -146,7 +150,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     
     const addComponent = (c: Omit<AnyComponent, 'id'>) => performAddApiAction(api.addComponent, c, (p) => ({type: 'ADD_COMPONENT', payload: p as AnyComponent}));
     const updateComponent = (c: AnyComponent) => performApiAction(api.updateComponent, c, (p) => ({type: 'UPDATE_COMPONENT', payload: p as AnyComponent}));
-    const deleteComponent = (id: string) => performApiAction(api.deleteComponent, id, () => ({type: 'DELETE_COMPONENT', payload: id}));
+    const deleteComponent = (c: {id: string, type: string}) => performApiAction(api.deleteComponent, c, () => ({type: 'DELETE_COMPONENT', payload: c.id}));
     
     const addSupplier = (s: Omit<Supplier, 'id'>) => performAddApiAction(api.addSupplier, s, (p) => ({type: 'ADD_SUPPLIER', payload: p as Supplier}));
     const updateSupplier = (s: Supplier) => performApiAction(api.updateSupplier, s, (p) => ({type: 'UPDATE_SUPPLIER', payload: p as Supplier}));
@@ -155,9 +159,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const addProject = (p: Omit<Project, 'id'>) => performAddApiAction(api.addProject, p, (p) => ({type: 'ADD_PROJECT', payload: p as Project}));
     const updateProject = (p: Project) => performApiAction(api.updateProject, p, (p) => ({type: 'UPDATE_PROJECT', payload: p as Project}));
     const deleteProject = (id: string) => performApiAction(api.deleteProject, id, () => ({type: 'DELETE_PROJECT', payload: id}));
+    const duplicateProject = (id: string) => performAddApiAction(api.duplicateProject, id, p => ({type: 'ADD_PROJECT', payload: p as Project}));
+    
+    const savePdfToDrive = async (fileName: string, folderName: string, base64Data: string): Promise<{fileUrl: string} | undefined> => {
+        dispatch({ type: 'SET_LOADING', payload: true });
+        try {
+            const result = await api.savePdfToDrive(fileName, folderName, base64Data);
+            alert(`Successfully saved PDF to Google Drive folder: "${folderName}"`);
+            return result;
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : 'Failed to save PDF';
+            dispatch({ type: 'SET_ERROR', payload: `PDF Save Failed: ${errorMessage}`});
+            return undefined;
+        } finally {
+            dispatch({ type: 'SET_LOADING', payload: false });
+        }
+    };
 
     return (
-        <AppContext.Provider value={{ state, loadInitialData, addComponent, updateComponent, deleteComponent, addSupplier, updateSupplier, deleteSupplier, addProject, updateProject, deleteProject }}>
+        <AppContext.Provider value={{ state, loadInitialData, addComponent, updateComponent, deleteComponent, addSupplier, updateSupplier, deleteSupplier, addProject, updateProject, deleteProject, duplicateProject, savePdfToDrive }}>
             {children}
         </AppContext.Provider>
     );

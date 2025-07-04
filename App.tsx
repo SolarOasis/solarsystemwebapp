@@ -146,13 +146,6 @@ const Header: React.FC<HeaderProps> = ({ pageTitle, onMenuClick, isSidebarOpen }
         )}
         <h2 className="text-2xl font-semibold text-gray-800">{pageTitle}</h2>
       </div>
-      <div className="flex items-center">
-        <img
-          src="https://picsum.photos/40/40"
-          alt="User Avatar"
-          className="rounded-full h-10 w-10 object-cover"
-        />
-      </div>
     </header>
   );
 };

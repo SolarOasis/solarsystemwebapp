@@ -1,3 +1,4 @@
+
 import React, { useState, useContext } from 'react';
 import { AppContext } from '../context/AppContext';
 import { AnyComponent, ComponentTypes, ComponentType, SolarPanel, Inverter, Battery, MountingSystem, Cable, MonitoringSystem, Supplier, ElectricCharger } from '../types';
@@ -49,7 +50,7 @@ const ComponentForm: React.FC<ComponentFormProps> = ({ component, onSave, compon
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value, type } = e.target;
-        const parsedValue = type === 'number' ? parseFloat(value) || 0 : value;
+        const parsedValue = e.target.type === 'number' ? parseFloat(value) || 0 : value;
         setFormData(prev => ({ ...prev, [name]: parsedValue }));
     };
 
@@ -80,6 +81,17 @@ const ComponentForm: React.FC<ComponentFormProps> = ({ component, onSave, compon
                     <Input label="Efficiency (%)" name="efficiency" type="number" step="0.1" value={inverter.efficiency} onChange={handleChange} />
                     <Input label="MPPT Channels" name="mpptChannels" type="number" value={inverter.mpptChannels} onChange={handleChange} />
                 </>;
+             case ComponentTypes.Battery:
+                const battery = formData as Battery;
+                return <>
+                    <Input label="Capacity (kWh)" name="capacity" type="number" step="0.1" value={battery.capacity} onChange={handleChange} />
+                    <Select label="Battery Type" name="batteryType" value={battery.batteryType} onChange={handleChange}>
+                        <option value="Lithium">Lithium</option>
+                        <option value="Lead-acid">Lead-acid</option>
+                    </Select>
+                    <Input label="Warranty (years)" name="warranty" type="number" value={battery.warranty} onChange={handleChange} />
+                    <Input label="Depth of Discharge (%)" name="depthOfDischarge" type="number" value={battery.depthOfDischarge} onChange={handleChange} />
+                </>;
             case ComponentTypes.ElectricCharger:
                 const charger = formData as ElectricCharger;
                 return <>
@@ -91,7 +103,6 @@ const ComponentForm: React.FC<ComponentFormProps> = ({ component, onSave, compon
                         <option value="CHAdeMO">CHAdeMO</option>
                     </Select>
                 </>;
-             // For brevity, other types can be added here
             default:
                 return null;
         }
@@ -142,9 +153,9 @@ const ComponentsPage = () => {
         closeModal();
     };
 
-    const handleDelete = (id: string) => {
+    const handleDelete = (component: AnyComponent) => {
         if (window.confirm('Are you sure you want to delete this component?')) {
-            deleteComponent(id);
+            deleteComponent({id: component.id, type: component.type});
         }
     };
 
@@ -179,7 +190,7 @@ const ComponentsPage = () => {
             <td className="whitespace-nowrap px-4 py-2">
                 <div className="flex gap-2">
                     <Button variant="ghost" size="sm" onClick={() => openModal(component)}><Edit size={16} /></Button>
-                    <Button variant="ghost" size="sm" className="text-red-500" onClick={() => handleDelete(component.id)}><Trash2 size={16} /></Button>
+                    <Button variant="ghost" size="sm" className="text-red-500" onClick={() => handleDelete(component)}><Trash2 size={16} /></Button>
                 </div>
             </td>
         );

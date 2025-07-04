@@ -2,8 +2,8 @@
 import { AnyComponent, Supplier, Project } from '../types';
 
 const getApiUrl = (): string | null => {
-    const url = localStorage.getItem('googleAppsScriptUrl');
-    // Basic validation for the URL
+    // Use the Vite environment variable prefix.
+    const url = import.meta.env.VITE_GOOGLE_APPS_SCRIPT_URL;
     if (url && url.startsWith('https://script.google.com/macros/s/')) {
         return url;
     }
@@ -14,7 +14,7 @@ const getApiUrl = (): string | null => {
 const postAction = async (action: string, payload: any): Promise<any> => {
     const url = getApiUrl();
     if (!url) {
-        throw new Error("Google Apps Script URL is not configured. Please set it in the Settings page.");
+        throw new Error("Application is not configured by the administrator.");
     }
 
     try {
@@ -23,7 +23,6 @@ const postAction = async (action: string, payload: any): Promise<any> => {
             mode: 'cors',
             redirect: 'follow', // Important for Google Scripts
             body: JSON.stringify({ action, payload }),
-            // Apps Script doPost expects a specific content type for the e.postData.contents
             headers: {
                 'Content-Type': 'text/plain;charset=utf-8',
             },
@@ -47,7 +46,7 @@ const postAction = async (action: string, payload: any): Promise<any> => {
 export const fetchAllData = async (): Promise<{ components: AnyComponent[], suppliers: Supplier[], projects: Project[] }> => {
     const url = getApiUrl();
      if (!url) {
-        throw new Error("Google Apps Script URL is not configured.");
+        throw new Error("Application is not configured by the administrator.");
     }
 
     try {
@@ -77,7 +76,7 @@ export const fetchAllData = async (): Promise<{ components: AnyComponent[], supp
 // Component actions
 export const addComponent = (component: Omit<AnyComponent, 'id'>) => postAction('addComponent', component);
 export const updateComponent = (component: AnyComponent) => postAction('updateComponent', component);
-export const deleteComponent = (id: string) => postAction('deleteComponent', { id });
+export const deleteComponent = (component: {id: string, type: string}) => postAction('deleteComponent', component);
 
 // Supplier actions
 export const addSupplier = (supplier: Omit<Supplier, 'id'>) => postAction('addSupplier', supplier);
@@ -88,3 +87,9 @@ export const deleteSupplier = (id: string) => postAction('deleteSupplier', { id 
 export const addProject = (project: Omit<Project, 'id'>) => postAction('addProject', project);
 export const updateProject = (project: Project) => postAction('updateProject', project);
 export const deleteProject = (id: string) => postAction('deleteProject', { id });
+export const duplicateProject = (id: string) => postAction('duplicateProject', { id });
+
+// New PDF action
+export const savePdfToDrive = (fileName: string, folderName: string, base64Data: string) => {
+    return postAction('savePdf', { fileName, folderName, base64Data });
+};

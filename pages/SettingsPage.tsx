@@ -1,64 +1,43 @@
-import React, { useState, useEffect } from 'react';
-import { Card, Button, Input } from '../components/ui';
-import { Save } from 'lucide-react';
+
+import React from 'react';
+import { Card } from '../components/ui';
 
 const SettingsPage = () => {
-    const [scriptUrl, setScriptUrl] = useState('');
-
-    useEffect(() => {
-        const storedUrl = localStorage.getItem('googleAppsScriptUrl');
-        if (storedUrl) {
-            setScriptUrl(storedUrl);
-        }
-    }, []);
-
-    const handleSaveUrl = () => {
-        localStorage.setItem('googleAppsScriptUrl', scriptUrl);
-        alert('URL saved! Reloading application to connect to your database...');
-        window.location.reload();
-    };
 
     return (
         <div className="space-y-8">
             <Card title="Google Services Integration">
                 <div className="space-y-4">
                     <p className="text-gray-600">
-                        This application uses Google Sheets as a database. To connect your data, you need to deploy a Google Apps Script Web App. 
-                        Follow the steps below to set up your backend.
+                        This application uses Google Sheets as a database and is configured via a Vercel Environment Variable.
+                        If the application is not working, please ensure the administrator has correctly set up the backend and configured the deployment settings.
                     </p>
-                    <div>
-                        <Input 
-                            label="Your Deployed Google Apps Script URL"
-                            id="script-url"
-                            type="url"
-                            value={scriptUrl}
-                            onChange={e => setScriptUrl(e.target.value)}
-                            placeholder="https://script.google.com/macros/s/..."
-                        />
-                        <p className="text-xs text-gray-500 mt-1">Paste the URL from your deployed Web App here.</p>
-                    </div>
-                    <div className="flex justify-end">
-                        <Button onClick={handleSaveUrl}>
-                            <Save className="mr-2 h-4 w-4" /> Save URL & Reload
-                        </Button>
-                    </div>
                 </div>
             </Card>
 
             <Card title="Backend Setup Instructions">
                 <div>
                     <h3 className="font-semibold text-lg mb-2">How to Deploy Your Backend:</h3>
-                    <ol className="list-decimal list-inside space-y-2 text-gray-700">
-                        <li>Go to <a href="https://sheets.new" target="_blank" rel="noopener noreferrer" className="text-brand-primary underline">sheets.new</a> to create a new Google Sheet. Name it "SolarOasisDB".</li>
-                        <li>Create three tabs (sheets) at the bottom. Rename them to be exactly: <strong className="font-mono bg-gray-200 px-1 rounded">Components</strong>, <strong className="font-mono bg-gray-200 px-1 rounded">Projects</strong>, and <strong className="font-mono bg-gray-200 px-1 rounded">Suppliers</strong>.</li>
-                         <li>You will need to ask your developer assistant for the complete `Code.gs` backend script.</li>
-                        <li>Click "Extensions" -&gt; "Apps Script".</li>
-                        <li>Delete any existing code in the <code className="font-mono bg-gray-200 px-1 rounded">Code.gs</code> editor and paste the provided script.</li>
+                    <ol className="list-decimal list-inside space-y-3 text-gray-700">
+                        <li>Go to <a href="https://sheets.new" target="_blank" rel="noopener noreferrer" className="text-brand-primary underline">sheets.new</a> to create a new Google Sheet. Name it anything you like (e.g., "SolarOasisDB").</li>
+                        <li>Ask your developer assistant for the complete <strong className="text-brand-primary">`Code.gs`</strong> backend script.</li>
+                        <li>In your new Google Sheet, click "Extensions" &rarr; "Apps Script".</li>
+                        <li>Delete any existing code in the <code className="font-mono bg-gray-200 px-1 rounded">Code.gs</code> editor and paste the entire provided script.
+                            <br/><em className="text-sm text-gray-500">The script will automatically create the required 'Components', 'Projects', and 'Suppliers' tabs for you.</em>
+                        </li>
                         <li>Click the "Save project" icon.</li>
-                        <li>Click the blue "Deploy" button -&gt; "New deployment".</li>
-                        <li>Select type "Web app". For "Who has access", select "Anyone".</li>
+                        <li>Click the blue "Deploy" button &rarr; "New deployment".</li>
+                        <li>In the configuration dialog:
+                            <ul className="list-disc list-inside pl-4 mt-1 text-sm">
+                                <li>Click the gear icon and select **"Web app"**.</li>
+                                <li>For "Who has access", select **"Anyone"**.</li>
+                            </ul>
+                        </li>
                         <li>Click "Deploy". Authorize the permissions when prompted (you may need to click "Advanced" and "Go to (unsafe)").</li>
-                        <li>Copy the provided "Web app URL" and paste it into the field at the top of this page, then click save.</li>
+                        <li>Copy the final "Web app URL".</li>
+                        <li>In Vercel, navigate to your project's "Settings" &rarr; "Environment Variables".</li>
+                        <li>Create a new variable named <code className="font-mono bg-gray-200 px-1 rounded">VITE_GOOGLE_APPS_SCRIPT_URL</code> and paste the Web app URL as the value.</li>
+                        <li>Redeploy your application in Vercel for the changes to take effect.</li>
                     </ol>
                 </div>
             </Card>

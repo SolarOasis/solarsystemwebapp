@@ -2,9 +2,9 @@
 import React, { useState, useContext } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AppContext } from '../context/AppContext';
-import { Project, AnyComponent, ClientInfo } from '../types';
+import { Project, AnyComponent, ClientInfo, ProjectComponent } from '../types';
 import { Card, Button, Table, Input, Select } from '../components/ui';
-import { Plus, ArrowLeft, Printer, Trash2 } from 'lucide-react';
+import { Plus, ArrowLeft, Trash2, Copy, CloudUpload } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -23,7 +23,7 @@ const ProjectsPage = () => {
 
 const ProjectList = ({ projects }: { projects: Project[] }) => {
     const navigate = useNavigate();
-    const { addProject } = useContext(AppContext);
+    const { addProject, duplicateProject, deleteProject } = useContext(AppContext);
     
     const handleCreateProject = async () => {
         const newProjectData: Omit<Project, 'id'> = {
@@ -49,9 +49,22 @@ const ProjectList = ({ projects }: { projects: Project[] }) => {
         }
     };
 
+    const handleDeleteProject = (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        if (window.confirm('Are you sure you want to delete this project?')) {
+            deleteProject(id);
+        }
+    }
+    
+    const handleDuplicateProject = (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        duplicateProject(id);
+    }
+
+
     return (
         <Card title="Projects" actions={<Button onClick={handleCreateProject}><Plus className="mr-2 h-4 w-4" /> New Project</Button>}>
-            <Table headers={['Project Name', 'Client', 'System Capacity (kW)', 'Status', 'Total Cost']}>
+            <Table headers={['Project Name', 'Client', 'System Capacity (kW)', 'Status', 'Total Cost', 'Actions']}>
                 {projects.map(project => (
                     <tr key={project.id} className="cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/projects/${project.id}`)}>
                         <td className="whitespace-nowrap px-4 py-2 font-medium text-gray-900">{project.name}</td>
@@ -61,12 +74,19 @@ const ProjectList = ({ projects }: { projects: Project[] }) => {
                             <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
                                 project.status === 'Completed' ? 'bg-green-100 text-green-800' :
                                 project.status === 'In Progress' ? 'bg-blue-100 text-blue-800' :
+                                project.status === 'Cancelled' ? 'bg-red-100 text-red-800' :
                                 'bg-yellow-100 text-yellow-800'
                             }`}>
                                 {project.status}
                             </span>
                         </td>
                         <td className="whitespace-nowrap px-4 py-2 text-gray-700">{project.costAnalysis.finalSellingPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} AED</td>
+                        <td className="whitespace-nowrap px-4 py-2">
+                            <div className="flex gap-2">
+                                <Button variant="ghost" size="sm" onClick={(e) => handleDuplicateProject(e, project.id)} title="Duplicate Project"><Copy size={16} /></Button>
+                                <Button variant="ghost" size="sm" className="text-red-500" onClick={(e) => handleDeleteProject(e, project.id)} title="Delete Project"><Trash2 size={16} /></Button>
+                            </div>
+                        </td>
                     </tr>
                 ))}
             </Table>
@@ -76,7 +96,7 @@ const ProjectList = ({ projects }: { projects: Project[] }) => {
 
 const ProjectDetails = ({ project: initialProject }: { project: Project }) => {
     const navigate = useNavigate();
-    const { state, updateProject } = useContext(AppContext);
+    const { state, updateProject, savePdfToDrive } = useContext(AppContext);
     const { components: allComponents } = state;
     const [project, setProject] = useState<Project>(initialProject);
 
@@ -99,7 +119,7 @@ const ProjectDetails = ({ project: initialProject }: { project: Project }) => {
         const markupAmount = totalProjectCost * (proj.costAnalysis.markupPercentage / 100);
         const finalSellingPrice = totalProjectCost + markupAmount;
         const profitMargin = finalSellingPrice - totalProjectCost;
-        const profitMarginPercentage = totalProjectCost > 0 ? (profitMargin / totalProjectCost) * 100 : 0;
+        const profitMarginPercentage = finalSellingPrice > 0 ? (profitMargin / finalSellingPrice) * 100 : 0;
         const costPerKw = proj.systemCapacity > 0 ? finalSellingPrice / proj.systemCapacity : 0;
         
         return {
@@ -142,7 +162,7 @@ const ProjectDetails = ({ project: initialProject }: { project: Project }) => {
     };
 
     const handleComponentQuantityChange = (componentId: string, quantity: number) => {
-        let newComponents;
+        let newComponents: ProjectComponent[];
         if (quantity <= 0) {
             newComponents = project.components.filter(c => c.componentId !== componentId);
         } else {
@@ -156,42 +176,45 @@ const ProjectDetails = ({ project: initialProject }: { project: Project }) => {
         alert("Project saved!");
     };
     
-    const generatePdfFromElement = (elementId: string, fileName: string) => {
+    const generateAndSavePdf = async (elementId: string, fileName: string, folderName: string) => {
         const element = document.getElementById(elementId);
         if (element) {
-            html2canvas(element, { scale: 2 }).then(canvas => {
-                const imgData = canvas.toDataURL('image/png');
-                const pdf = new jsPDF('p', 'mm', 'a4');
-                const pdfWidth = pdf.internal.pageSize.getWidth();
-                const pdfHeight = pdf.internal.pageSize.getHeight();
-                const canvasWidth = canvas.width;
-                const canvasHeight = canvas.height;
-                const ratio = pdfWidth / canvasWidth;
-                const newCanvasHeight = canvasHeight * ratio;
-                let heightLeft = newCanvasHeight;
-                let position = 0;
+            const canvas = await html2canvas(element, { scale: 2 });
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const canvasWidth = canvas.width;
+            const canvasHeight = canvas.height;
+            const ratio = pdfWidth / canvasWidth;
+            const newCanvasHeight = canvasHeight * ratio;
+            let heightLeft = newCanvasHeight;
+            let position = 0;
 
-                pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, newCanvasHeight);
-                heightLeft -= pdfHeight;
+            pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, position, pdfWidth, newCanvasHeight);
+            heightLeft -= pdf.internal.pageSize.getHeight();
 
-                while (heightLeft > 0) {
-                    position = heightLeft - newCanvasHeight;
-                    pdf.addPage();
-                    pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, newCanvasHeight);
-                    heightLeft -= pdfHeight;
-                }
-                
-                pdf.save(fileName);
-            });
+            while (heightLeft > 0) {
+                position = heightLeft - newCanvasHeight;
+                pdf.addPage();
+                pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, position, pdfWidth, newCanvasHeight);
+                heightLeft -= pdf.internal.pageSize.getHeight();
+            }
+            
+            const base64String = pdf.output('datauristring');
+            const base64Data = base64String.substring(base64String.indexOf(',') + 1);
+            
+            const result = await savePdfToDrive(fileName, folderName, base64Data);
+            if (result && result.fileUrl) {
+                window.open(result.fileUrl, '_blank');
+            }
         }
-    }
+    };
 
     const handleGenerateQuotePdf = () => {
-        generatePdfFromElement('quotation-template', `Quotation-${project.name.replace(/ /g, '_')}.pdf`);
+        generateAndSavePdf('quotation-template', `Quotation-${project.name.replace(/ /g, '_')}.pdf`, 'Quotations');
     };
 
     const handleGenerateInternalPdf = () => {
-        generatePdfFromElement('internal-cost-analysis-template', `Cost-Analysis-${project.name.replace(/ /g, '_')}.pdf`);
+        generateAndSavePdf('internal-cost-analysis-template', `Cost-Analysis-${project.name.replace(/ /g, '_')}.pdf`, 'Internal Cost Analysis');
     };
     
     return (
@@ -200,10 +223,20 @@ const ProjectDetails = ({ project: initialProject }: { project: Project }) => {
             <Card title="Project Details">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <Input label="Project Name" value={project.name} onChange={e => handleProjectChange('name', e.target.value)} />
+                    <Select
+                        label="Project Status"
+                        value={project.status}
+                        onChange={e => handleProjectChange('status', e.target.value as Project['status'])}
+                    >
+                        <option value="Planning">Planning</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Completed">Completed</option>
+                        <option value="Cancelled">Cancelled</option>
+                    </Select>
                     <Input label="System Capacity (kW)" type="number" value={project.systemCapacity} onChange={e => handleProjectChange('systemCapacity', parseFloat(e.target.value))} />
                     <Input label="Client Name" value={project.client.name} onChange={e => handleClientChange('name', e.target.value)} />
                     <Input label="Client Contact" value={project.client.contact} onChange={e => handleClientChange('contact', e.target.value)} />
-                    <div className="md:col-span-2">
+                     <div className="md:col-span-2">
                       <Input label="Client Address" value={project.client.address} onChange={e => handleClientChange('address', e.target.value)} />
                     </div>
                 </div>
@@ -263,8 +296,8 @@ const ProjectDetails = ({ project: initialProject }: { project: Project }) => {
             
             <div className="flex justify-end gap-4 mt-6">
                  <Button variant="secondary" onClick={handleSave}>Save Project</Button>
-                 <Button variant="ghost" onClick={handleGenerateInternalPdf}><Printer className="mr-2 h-4 w-4" /> Download Cost Analysis</Button>
-                 <Button onClick={handleGenerateQuotePdf}><Printer className="mr-2 h-4 w-4" /> Generate Quotation</Button>
+                 <Button variant="ghost" onClick={handleGenerateInternalPdf}><CloudUpload className="mr-2 h-4 w-4" /> Save Analysis to Drive</Button>
+                 <Button onClick={handleGenerateQuotePdf}><CloudUpload className="mr-2 h-4 w-4" /> Save Quote to Drive</Button>
             </div>
             
             {/* Hidden element for PDF generation */}
