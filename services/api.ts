@@ -1,4 +1,3 @@
-
 import { AnyComponent, Supplier, Project, ClientInfo, CostAnalysis, ProjectComponent } from '../types';
 
 const getApiUrl = (): string | null => {
@@ -55,6 +54,9 @@ const stringifyProjectNestedObjects = (project: any) => {
     if (Array.isArray(toSend.components)) {
         toSend.components = JSON.stringify(toSend.components);
     }
+    if (typeof toSend.timeline === 'object' && toSend.timeline !== null) {
+        toSend.timeline = JSON.stringify(toSend.timeline);
+    }
     return toSend;
 };
 
@@ -96,7 +98,17 @@ const parseProjectNestedObjects = (project: any): Project => {
         }
     }
 
-    return { ...project, client, costAnalysis, components };
+    let timeline: { startDate: string; endDate: string; } = project.timeline;
+    if (typeof timeline === 'string') {
+        try {
+            timeline = JSON.parse(timeline);
+        } catch (e) {
+            console.error('Failed to parse project.timeline:', timeline, e);
+            timeline = { startDate: '', endDate: '' };
+        }
+    }
+
+    return { ...project, client, costAnalysis, components, timeline };
 };
 
 
