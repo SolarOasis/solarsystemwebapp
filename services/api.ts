@@ -1,4 +1,5 @@
-import { AnyComponent, Supplier, Project, ClientInfo, CostAnalysis, ProjectComponent } from '../types';
+
+import { AnyComponent, Supplier, Project, ClientInfo, CostAnalysis, ProjectComponent, ComponentType } from '../types';
 
 const getApiUrl = (): string | null => {
     // Use the Vite environment variable prefix.
@@ -60,55 +61,68 @@ const stringifyProjectNestedObjects = (project: any) => {
     return toSend;
 };
 
+// Helper to stringify nested objects in a supplier before sending to the backend.
+const stringifySupplierNestedObjects = (supplier: Partial<Supplier>) => {
+    const toSend = {...supplier};
+    if (Array.isArray(toSend.specialization)) {
+        toSend.specialization = JSON.stringify(toSend.specialization);
+    }
+    return toSend;
+};
+
+/**
+ * Safely parses a value that might be a JSON string.
+ * If it's not a string, it's returned as is.
+ * If parsing fails, it returns a provided default value.
+ * @param value The value to parse (string | any)
+ * @param defaultValue The value to return on parsing failure.
+ * @returns The parsed object, the original value, or the default value.
+ */
+const safelyParseJSON = <T>(value: any, defaultValue: T): T => {
+    if (typeof value === 'string') {
+        if (value.trim().startsWith('[') || value.trim().startsWith('{')) {
+            try {
+                return JSON.parse(value);
+            } catch (e) {
+                console.error('Failed to parse JSON string:', value, e);
+                return defaultValue;
+            }
+        }
+        // Handles empty string or other non-JSON strings by returning default.
+        return defaultValue;
+    }
+    
+    // For non-string types (like already-parsed objects, numbers, booleans, null, undefined)
+    return value ?? defaultValue;
+};
+
+
+// Helper to parse nested objects in a supplier after receiving from the backend.
+const parseSupplierNestedObjects = (supplier: any): Supplier => {
+    if (!supplier) return supplier;
+    return { 
+        ...supplier, 
+        specialization: safelyParseJSON(supplier.specialization, [])
+    };
+};
+
+
 // Helper to parse nested objects in a project after receiving from the backend.
 const parseProjectNestedObjects = (project: any): Project => {
     if (!project) return project;
 
-    let client: ClientInfo = project.client;
-    if (typeof client === 'string') {
-        try {
-            client = JSON.parse(client);
-        } catch (e) {
-            console.error('Failed to parse project.client:', client, e);
-            client = { name: 'Error: Invalid data', contact: '', address: '' };
-        }
-    }
-
-    let costAnalysis: CostAnalysis = project.costAnalysis;
-    if (typeof costAnalysis === 'string') {
-        try {
-            costAnalysis = JSON.parse(costAnalysis);
-        } catch (e) {
-            console.error('Failed to parse project.costAnalysis:', costAnalysis, e);
-            // Provide a default structure to prevent UI crashes
-            costAnalysis = {
-                componentCosts: [], totalMaterialCost: 0, totalProjectCost: 0, finalSellingPrice: 0,
-                profitMargin: 0, profitMarginPercentage: 0, costPerKw: 0, markupAmount: 0,
-            };
-        }
-    }
+    const defaultCostAnalysis: CostAnalysis = {
+        componentCosts: [], totalMaterialCost: 0, totalProjectCost: 0, finalSellingPrice: 0,
+        profitMargin: 0, profitMarginPercentage: 0, costPerKw: 0, markupAmount: 0,
+    };
     
-    let components: ProjectComponent[] = project.components;
-    if (typeof components === 'string') {
-        try {
-            components = JSON.parse(components);
-        } catch (e) {
-            console.error('Failed to parse project.components:', components, e);
-            components = [];
-        }
-    }
-
-    let timeline: { startDate: string; endDate: string; } = project.timeline;
-    if (typeof timeline === 'string') {
-        try {
-            timeline = JSON.parse(timeline);
-        } catch (e) {
-            console.error('Failed to parse project.timeline:', timeline, e);
-            timeline = { startDate: '', endDate: '' };
-        }
-    }
-
-    return { ...project, client, costAnalysis, components, timeline };
+    return { 
+        ...project, 
+        client: safelyParseJSON(project.client, { name: 'Error: Invalid data', contact: '', address: '' }),
+        costAnalysis: safelyParseJSON(project.costAnalysis, defaultCostAnalysis),
+        components: safelyParseJSON(project.components, []),
+        timeline: safelyParseJSON(project.timeline, { startDate: '', endDate: '' })
+    };
 };
 
 
@@ -139,6 +153,10 @@ export const fetchAllData = async (): Promise<{ components: AnyComponent[], supp
         if (data.projects && Array.isArray(data.projects)) {
             data.projects = data.projects.map(parseProjectNestedObjects);
         }
+
+        if (data.suppliers && Array.isArray(data.suppliers)) {
+            data.suppliers = data.suppliers.map(parseSupplierNestedObjects);
+        }
         
         return data;
     } catch (error) {
@@ -153,8 +171,14 @@ export const updateComponent = (component: AnyComponent) => postAction('updateCo
 export const deleteComponent = (component: {id: string, type: string}) => postAction('deleteComponent', component);
 
 // Supplier actions
-export const addSupplier = (supplier: Omit<Supplier, 'id'>) => postAction('addSupplier', supplier);
-export const updateSupplier = (supplier: Supplier) => postAction('updateSupplier', supplier);
+export const addSupplier = async (supplier: Omit<Supplier, 'id'>): Promise<Supplier> => {
+    const result = await postAction('addSupplier', stringifySupplierNestedObjects(supplier));
+    return parseSupplierNestedObjects(result);
+};
+export const updateSupplier = async (supplier: Supplier): Promise<Supplier> => {
+    const result = await postAction('updateSupplier', stringifySupplierNestedObjects(supplier));
+    return parseSupplierNestedObjects(result);
+};
 export const deleteSupplier = (id: string) => postAction('deleteSupplier', { id });
 
 // Project actions

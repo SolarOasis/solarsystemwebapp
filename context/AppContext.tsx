@@ -64,13 +64,13 @@ export const AppContext = createContext<{
     state: AppState;
     loadInitialData: () => void;
     addComponent: (component: Omit<AnyComponent, 'id'>) => Promise<AnyComponent | undefined>;
-    updateComponent: (component: AnyComponent) => Promise<void>;
+    updateComponent: (component: AnyComponent) => Promise<AnyComponent | undefined>;
     deleteComponent: (component: {id: string, type: string}) => Promise<void>;
     addSupplier: (supplier: Omit<Supplier, 'id'>) => Promise<Supplier | undefined>;
-    updateSupplier: (supplier: Supplier) => Promise<void>;
+    updateSupplier: (supplier: Supplier) => Promise<Supplier | undefined>;
     deleteSupplier: (id: string) => Promise<void>;
     addProject: (project: Omit<Project, 'id'>) => Promise<Project | undefined>;
-    updateProject: (project: Project) => Promise<void>;
+    updateProject: (project: Project) => Promise<Project | undefined>;
     deleteProject: (id: string) => Promise<void>;
     duplicateProject: (id: string) => Promise<Project | undefined>;
     savePdfToDrive: (fileName: string, folderName: string, base64Data: string) => Promise<{fileUrl: string} | undefined>;
@@ -78,13 +78,13 @@ export const AppContext = createContext<{
     state: initialState,
     loadInitialData: () => {},
     addComponent: async () => undefined,
-    updateComponent: async () => {},
+    updateComponent: async () => undefined,
     deleteComponent: async () => {},
     addSupplier: async () => undefined,
-    updateSupplier: async () => {},
+    updateSupplier: async () => undefined,
     deleteSupplier: async () => {},
     addProject: async () => undefined,
-    updateProject: async () => {},
+    updateProject: async () => undefined,
     deleteProject: async () => {},
     duplicateProject: async () => undefined,
     savePdfToDrive: async () => undefined,
@@ -149,15 +149,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     
     const addComponent = (c: Omit<AnyComponent, 'id'>) => performAddApiAction(api.addComponent, c, (p) => ({type: 'ADD_COMPONENT', payload: p as AnyComponent}));
-    const updateComponent = (c: AnyComponent) => performApiAction(api.updateComponent, c, (p) => ({type: 'UPDATE_COMPONENT', payload: p as AnyComponent}));
+    const updateComponent = (c: AnyComponent) => performAddApiAction(api.updateComponent, c, (p) => ({type: 'UPDATE_COMPONENT', payload: p as AnyComponent}));
     const deleteComponent = (c: {id: string, type: string}) => performApiAction(api.deleteComponent, c, () => ({type: 'DELETE_COMPONENT', payload: c.id}));
     
-    const addSupplier = (s: Omit<Supplier, 'id'>) => performAddApiAction(api.addSupplier, s, (p) => ({type: 'ADD_SUPPLIER', payload: p as Supplier}));
-    const updateSupplier = (s: Supplier) => performApiAction(api.updateSupplier, s, (p) => ({type: 'UPDATE_SUPPLIER', payload: p as Supplier}));
+    const addSupplier = (s: Omit<Supplier, 'id'>) => performAddApiAction(api.addSupplier, s, (p) => ({type: 'ADD_SUPPLIER', payload: p}));
+    const updateSupplier = (s: Supplier) => performAddApiAction(api.updateSupplier, s, (p) => ({type: 'UPDATE_SUPPLIER', payload: p}));
     const deleteSupplier = (id: string) => performApiAction(api.deleteSupplier, id, () => ({type: 'DELETE_SUPPLIER', payload: id}));
 
     const addProject = (p: Omit<Project, 'id'>) => performAddApiAction(api.addProject, p, (p) => ({type: 'ADD_PROJECT', payload: p as Project}));
-    const updateProject = (p: Project) => performApiAction(api.updateProject, p, (p) => ({type: 'UPDATE_PROJECT', payload: p as Project}));
+    const updateProject = (p: Project) => performAddApiAction(api.updateProject, p, (p) => ({type: 'UPDATE_PROJECT', payload: p as Project}));
     const deleteProject = (id: string) => performApiAction(api.deleteProject, id, () => ({type: 'DELETE_PROJECT', payload: id}));
     const duplicateProject = (id: string) => performAddApiAction(api.duplicateProject, id, p => ({type: 'ADD_PROJECT', payload: p as Project}));
     
