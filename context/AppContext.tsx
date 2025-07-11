@@ -167,8 +167,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const result = await api.savePdfToDrive(fileName, folderName, base64Data);
             alert(`Successfully saved PDF to Google Drive folder: "${folderName}"`);
             return result;
-        } catch (err)
- {
+        } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Failed to save PDF';
             dispatch({ type: 'SET_ERROR', payload: `PDF Save Failed: ${errorMessage}`});
             return undefined;
