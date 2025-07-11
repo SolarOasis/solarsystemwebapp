@@ -96,6 +96,8 @@ const CalculatorPage: React.FC = () => {
   const [batteryEfficiency, setBatteryEfficiency] = useState(0.95);
   const [usableDoD, setUsableDoD] = useState(0.9);
   const [showIdealOutput, setShowIdealOutput] = useState(false);
+  const [inverterRatio, setInverterRatio] = useState(1.1);
+  const [batteryMode, setBatteryMode] = useState<'night' | 'unused'>('night');
 
   // ROI Inputs
   const [systemCost, setSystemCost] = useState<string>('');
@@ -106,7 +108,7 @@ const CalculatorPage: React.FC = () => {
   const [seasonalAnalysis, setSeasonalAnalysis] = useState<SeasonalAnalysis>({ summerAvg: 0, winterAvg: 0, spikePercentage: 0, baseLoad: 0, coolingLoad: 0 });
   const [systemRecommendation, setSystemRecommendation] = useState<SystemRecommendation>({ systemSize: 0, panelCount: 0, spaceRequired: 0, annualProduction: 0, inverterCapacity: 0, batteryCapacity: 0, summerCoverage: 0, winterCoverage: 0, annualCoverage: 0, dailyAvgConsumption: 0 });
   const [financialAnalysis, setFinancialAnalysis] = useState<FinancialAnalysis>({ annualSavings: 0, paybackPeriod: 0, roi25Year: 0, netMeteringCredits: 0, roiPercentage: 0 });
-  const [wastedEnergy, setWastedEnergy] = useState(0);
+  const [unusedSolar, setUnusedSolar] = useState(0);
 
   const calculateBillAmount = useCallback((consumption: number): number => {
     if (consumption <= 0) return 0;
@@ -243,13 +245,22 @@ const CalculatorPage: React.FC = () => {
       const adjustedEfficiency = showIdealOutput ? 1 : systemEfficiency / 100;
       const adjustedLosses = showIdealOutput ? 1 : realWorldLosses;
       const annualProduction = rawProduction * adjustedEfficiency * adjustedLosses;
+
+      const totalConsumption = avgMonthlyConsumption * 12;
+      const unused = Math.max(0, annualProduction - totalConsumption);
+      setUnusedSolar(Math.round(unused));
       
-      const inverterCapacity = Math.ceil(actualSystemSize * 1.1 * 10) / 10;
+      const inverterCapacity = Math.ceil(actualSystemSize * inverterRatio * 10) / 10;
       
       let batteryCapacity = 0;
       if (authority === 'FEWA' && batteryEnabled) {
-        const nightConsumption = avgDailyConsumption * (1 - daytimeConsumption / 100);
-        batteryCapacity = Math.ceil(nightConsumption / (batteryEfficiency * usableDoD));
+        if (batteryMode === 'night') {
+            const nightConsumption = avgDailyConsumption * (1 - daytimeConsumption / 100);
+            batteryCapacity = Math.ceil(nightConsumption / (batteryEfficiency * usableDoD));
+        } else if (batteryMode === 'unused') {
+            const unusedKwh = Math.max(0, annualProduction - totalConsumption);
+            batteryCapacity = Math.ceil((unusedKwh / 365) / (batteryEfficiency * usableDoD));
+        }
       }
       
       const monthlyProduction = annualProduction / 12;
@@ -264,7 +275,7 @@ const CalculatorPage: React.FC = () => {
     } else {
         setSystemRecommendation({ systemSize: 0, panelCount: 0, spaceRequired: 0, annualProduction: 0, inverterCapacity: 0, batteryCapacity: 0, summerCoverage: 0, winterCoverage: 0, annualCoverage: 0, dailyAvgConsumption: 0 });
     }
-  }, [bills, authority, batteryEnabled, daytimeConsumption, peakSunHours, systemEfficiency, panelWattage, seasonalAnalysis.summerAvg, seasonalAnalysis.winterAvg, batteryEfficiency, usableDoD, showIdealOutput]);
+  }, [bills, authority, batteryEnabled, daytimeConsumption, peakSunHours, systemEfficiency, panelWattage, seasonalAnalysis.summerAvg, seasonalAnalysis.winterAvg, batteryEfficiency, usableDoD, showIdealOutput, inverterRatio, batteryMode]);
 
   const calculateBillAmountWithEscalation = useCallback((consumption: number, year: number, escRate: number): number => {
     if (consumption <= 0) return 0;
@@ -298,7 +309,6 @@ const CalculatorPage: React.FC = () => {
   useEffect(() => {
     if (!systemCost || bills.length === 0 || systemRecommendation.annualProduction === 0) {
       setFinancialAnalysis({ annualSavings: 0, paybackPeriod: 0, roi25Year: 0, netMeteringCredits: 0, roiPercentage: 0 });
-      setWastedEnergy(0);
       return;
     }
 
@@ -311,7 +321,7 @@ const CalculatorPage: React.FC = () => {
         return acc;
     }, {} as {[key: string]: number});
 
-    let cumulativeCashFlow = -initialInvestment, paybackPeriodYears = 0, firstYearAnnualSavings = 0, netMeteringCreditsKwh = 0, totalWastedKwh = 0;
+    let cumulativeCashFlow = -initialInvestment, paybackPeriodYears = 0, firstYearAnnualSavings = 0, netMeteringCreditsKwh = 0;
 
     for (let year = 1; year <= SYSTEM_LIFESPAN_YEARS; year++) {
       let yearlySavings = 0;
@@ -338,9 +348,6 @@ const CalculatorPage: React.FC = () => {
                   const daytimeLoadKwh = monthlyConsumption * (daytimeConsumption / 100);
                   const savedKwh = Math.min(monthlyProduction, daytimeLoadKwh);
                   newBill = calculateBillAmountWithEscalation(monthlyConsumption - savedKwh, year, escalationRate);
-                  if (year === 1) {
-                      totalWastedKwh += Math.max(0, monthlyProduction - daytimeLoadKwh);
-                  }
               }
           }
           yearlySavings += (originalBill - newBill);
@@ -350,7 +357,6 @@ const CalculatorPage: React.FC = () => {
       if (paybackPeriodYears === 0 && (cumulativeCashFlow + yearlyCashFlow) > 0) paybackPeriodYears = (year - 1) + (Math.abs(cumulativeCashFlow) / yearlyCashFlow);
       cumulativeCashFlow += yearlyCashFlow;
     }
-    setWastedEnergy(Math.round(totalWastedKwh));
     
     const totalAnnualConsumption = avgMonthlyConsumption * 12;
     const excessProduction = Math.max(0, systemRecommendation.annualProduction - totalAnnualConsumption);
@@ -424,7 +430,8 @@ Payback Period: ${reportData.financialAnalysis.paybackPeriod} years
         projectName, location, city, authority, batteryEnabled, bills, 
         rateStructure, electricityRate, tiers, daytimeConsumption, 
         availableSpace, peakSunHours, systemEfficiency, panelWattage, 
-        systemCost, degradationRate, escalationRate, batteryEfficiency, usableDoD 
+        systemCost, degradationRate, escalationRate, batteryEfficiency, usableDoD,
+        inverterRatio, batteryMode
     };
     const dataStr = JSON.stringify(projectData, null, 2);
     const linkElement = document.createElement('a');
@@ -436,7 +443,7 @@ Payback Period: ${reportData.financialAnalysis.paybackPeriod} years
   return (
     <div className="space-y-6">
       <Card title="Project Configuration">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
             <Input label="Project Name" value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="e.g. Villa Solar Project" />
             <Input label="Location" value={location} onChange={(e) => setLocation(e.target.value)} />
             <div>
@@ -458,6 +465,15 @@ Payback Period: ${reportData.financialAnalysis.paybackPeriod} years
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Battery Storage</label>
               <Button onClick={() => setBatteryEnabled(!batteryEnabled)} disabled={authority === 'DEWA'} variant={batteryEnabled ? 'secondary' : 'ghost'} className="w-full"><Battery className="w-4 h-4 mr-2" />{batteryEnabled ? 'Enabled' : 'Disabled'}</Button>
+              {batteryEnabled && authority === 'FEWA' && (
+                <div className="mt-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Battery Usage Mode</label>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => setBatteryMode('night')} variant={batteryMode === 'night' ? 'secondary' : 'ghost'} className="w-full text-xs">Nighttime Backup</Button>
+                    <Button size="sm" onClick={() => setBatteryMode('unused')} variant={batteryMode === 'unused' ? 'secondary' : 'ghost'} className="w-full text-xs">Store Unused</Button>
+                  </div>
+                </div>
+              )}
             </div>
         </div>
       </Card>
@@ -544,6 +560,32 @@ Payback Period: ${reportData.financialAnalysis.paybackPeriod} years
             <Input label="Peak Sun Hours" type="number" value={peakSunHours} onChange={(e) => setPeakSunHours(parseFloat(e.target.value) || 0)} step={0.1} />
             <Input label="System Efficiency (%)" type="number" value={systemEfficiency} onChange={(e) => setSystemEfficiency(parseFloat(e.target.value) || 0)} />
             <Input label="Panel Wattage (W)" type="number" value={panelWattage} onChange={(e) => setPanelWattage(parseFloat(e.target.value) || 0)} />
+            <div className="md:col-span-2 lg:col-span-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Inverter Sizing Ratio
+                    <span className="text-gray-400 text-xs ml-1" title="Controls how much larger the inverter is compared to the PV array. Higher ratios reduce clipping risk, lower ratios save cost.">ℹ️</span>
+                </label>
+                <Select
+                    value={inverterRatio}
+                    onChange={(e) => setInverterRatio(parseFloat(e.target.value))}
+                    className="w-full text-sm"
+                >
+                    <option value={0.85}>0.85 – Cost-focused residential</option>
+                    <option value={1.0}>1.00 – Net metering (DEWA)</option>
+                    <option value={1.05}>1.05 – Light oversize (buffering)</option>
+                    <option value={1.1}>1.10 – Commercial rooftops</option>
+                    <option value={1.15}>1.15 – Hybrid with battery</option>
+                    <option value={1.2}>1.20 – Industrial/export systems</option>
+                </Select>
+                <p className="text-xs text-gray-500 mt-1">
+                    {inverterRatio === 0.85 && 'Use for budget residential with minor clipping.'}
+                    {inverterRatio === 1.0 && 'Ideal for DEWA and net metering setups.'}
+                    {inverterRatio === 1.05 && 'Adds flexibility under cloud cover.'}
+                    {inverterRatio === 1.1 && 'Common for commercial PV systems.'}
+                    {inverterRatio === 1.15 && 'Supports hybrid inverters + battery.'}
+                    {inverterRatio === 1.2 && 'Used for export-heavy or hybrid setups.'}
+                </p>
+            </div>
         </div>
         <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-200">
             <input type="checkbox" id="ideal-output-toggle" checked={showIdealOutput} onChange={(e) => setShowIdealOutput(e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-brand-primary focus:ring-brand-primary" />
@@ -559,6 +601,11 @@ Payback Period: ${reportData.financialAnalysis.paybackPeriod} years
             <div className="p-4 rounded-lg text-white bg-brand-primary"><p className="text-sm opacity-90">Space Required</p><p className="text-2xl font-bold">{systemRecommendation.spaceRequired} m²</p></div>
             <div className="p-4 rounded-lg bg-brand-secondary"><p className="text-sm text-brand-primary">Annual Production</p><p className="text-2xl font-bold text-brand-primary">{systemRecommendation.annualProduction.toLocaleString()} kWh</p></div>
           </div>
+          {unusedSolar > 0 && (
+            <div className="text-sm text-amber-600 my-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-center">
+              Estimated unused solar: <strong>{unusedSolar.toLocaleString()} kWh/year</strong>. This energy could be stored with a battery or exported.
+            </div>
+          )}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6"><div className="text-center"><p className="text-sm text-gray-600">Inverter Capacity</p><p className="text-xl font-semibold text-brand-primary">{systemRecommendation.inverterCapacity} kW</p></div>{batteryEnabled && authority === 'FEWA' && (<div className="text-center"><p className="text-sm text-gray-600">Battery Capacity</p><p className="text-xl font-semibold text-brand-primary">{systemRecommendation.batteryCapacity} kWh</p></div>)}</div>
           <div className="mb-6"><h3 className="text-lg font-semibold mb-3 text-brand-primary">Seasonal Coverage Analysis</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -567,14 +614,6 @@ Payback Period: ${reportData.financialAnalysis.paybackPeriod} years
                 <div><p className="text-sm text-gray-600">Annual Average</p><div className="w-full bg-gray-200 rounded-full h-4 mt-1"><div className="h-4 rounded-full bg-green-500" style={{width: `${systemRecommendation.annualCoverage}%`}}></div></div><p className="text-sm font-semibold mt-1 text-green-600">{systemRecommendation.annualCoverage}%</p></div>
             </div>
           </div>
-          {authority === 'FEWA' && !batteryEnabled && wastedEnergy > 0 && (
-              <div className="bg-orange-100 border border-orange-300 rounded-lg p-4 flex items-center gap-2 text-sm mt-4">
-                  <AlertCircle className="w-5 h-5 text-orange-600" />
-                  <p className="text-orange-800">
-                    Projected Unused Solar: <strong>{wastedEnergy.toLocaleString()} kWh/year</strong>. This energy could be captured with a battery system.
-                  </p>
-              </div>
-          )}
           {systemRecommendation.spaceRequired > availableSpace && (<div className="bg-red-100 border border-red-300 rounded-lg p-4 flex items-center gap-2 text-sm mt-4"><AlertCircle className="w-5 h-5 text-red-600" /><p className="text-red-800">Warning: Required space ({systemRecommendation.spaceRequired} m²) exceeds available space ({availableSpace} m²).</p></div>)}
         </Card>
         <Card title="Financial & ROI Analysis">
