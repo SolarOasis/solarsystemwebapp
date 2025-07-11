@@ -95,6 +95,7 @@ const CalculatorPage: React.FC = () => {
   const [panelWattage, setPanelWattage] = useState<number>(550);
   const [batteryEfficiency, setBatteryEfficiency] = useState(0.95);
   const [usableDoD, setUsableDoD] = useState(0.9);
+  const [showIdealOutput, setShowIdealOutput] = useState(false);
 
   // ROI Inputs
   const [systemCost, setSystemCost] = useState<string>('');
@@ -237,7 +238,12 @@ const CalculatorPage: React.FC = () => {
       const panelCount = Math.ceil((systemSize * 1000) / panelWattage);
       const actualSystemSize = (panelCount * panelWattage) / 1000;
       const spaceRequired = panelCount * 2.1;
-      const annualProduction = actualSystemSize * peakSunHours * 365 * (systemEfficiency / 100) * realWorldLosses;
+
+      const rawProduction = actualSystemSize * peakSunHours * 365;
+      const adjustedEfficiency = showIdealOutput ? 1 : systemEfficiency / 100;
+      const adjustedLosses = showIdealOutput ? 1 : realWorldLosses;
+      const annualProduction = rawProduction * adjustedEfficiency * adjustedLosses;
+      
       const inverterCapacity = Math.ceil(actualSystemSize * 1.1 * 10) / 10;
       
       let batteryCapacity = 0;
@@ -258,7 +264,7 @@ const CalculatorPage: React.FC = () => {
     } else {
         setSystemRecommendation({ systemSize: 0, panelCount: 0, spaceRequired: 0, annualProduction: 0, inverterCapacity: 0, batteryCapacity: 0, summerCoverage: 0, winterCoverage: 0, annualCoverage: 0, dailyAvgConsumption: 0 });
     }
-  }, [bills, authority, batteryEnabled, daytimeConsumption, peakSunHours, systemEfficiency, panelWattage, seasonalAnalysis.summerAvg, seasonalAnalysis.winterAvg, batteryEfficiency, usableDoD]);
+  }, [bills, authority, batteryEnabled, daytimeConsumption, peakSunHours, systemEfficiency, panelWattage, seasonalAnalysis.summerAvg, seasonalAnalysis.winterAvg, batteryEfficiency, usableDoD, showIdealOutput]);
 
   const calculateBillAmountWithEscalation = useCallback((consumption: number, year: number, escRate: number): number => {
     if (consumption <= 0) return 0;
@@ -369,7 +375,14 @@ const CalculatorPage: React.FC = () => {
   
   const copyReport = () => {
     const reportData = { projectName: projectName || 'Solar Project', location, authority, batteryEnabled, seasonalAnalysis, systemRecommendation, financialAnalysis, systemCost };
-    const summary = `SOLAR OASIS - PROJECT REPORT
+    const totalAnnualConsumption = bills.reduce((sum, bill) => sum + bill.consumption, 0);
+    const annualProduction = reportData.systemRecommendation.annualProduction;
+    const coveragePercent = totalAnnualConsumption > 0 ? (annualProduction / totalAnnualConsumption) * 100 : 0;
+    const roi25Year = reportData.financialAnalysis.roi25Year;
+    const cost = parseFloat(reportData.systemCost);
+    const roiPercent = cost > 0 ? (roi25Year / cost) * 100 : 0;
+
+    let summary = `SOLAR OASIS - PROJECT REPORT
 ============================
 Project: ${reportData.projectName}
 Location: ${reportData.location}
@@ -378,23 +391,31 @@ Date: ${new Date().toLocaleDateString()}
 
 CONSUMPTION ANALYSIS
 --------------------
+Annual Consumption: ${totalAnnualConsumption.toLocaleString()} kWh
 Summer Average: ${reportData.seasonalAnalysis.summerAvg} kWh/month
 Winter Average: ${reportData.seasonalAnalysis.winterAvg} kWh/month
 Summer Spike: ${reportData.seasonalAnalysis.spikePercentage}%
 
 RECOMMENDED SYSTEM
 ------------------
-System Size: ${reportData.systemRecommendation.systemSize} kW
-Number of Panels: ${reportData.systemRecommendation.panelCount}
+System Size: ${reportData.systemRecommendation.systemSize} kWp
+Number of Panels: ${reportData.systemRecommendation.panelCount} × ${panelWattage}W
 Annual Production: ${reportData.systemRecommendation.annualProduction.toLocaleString()} kWh
+Coverage: ${coveragePercent.toFixed(1)}%
 ${reportData.batteryEnabled ? `Battery Capacity: ${reportData.systemRecommendation.batteryCapacity} kWh` : ''}
 
 FINANCIAL ANALYSIS
 ------------------
-System Cost: AED ${parseFloat(reportData.systemCost).toLocaleString()}
+System Cost: AED ${cost.toLocaleString()}
 First-Year Savings: AED ${reportData.financialAnalysis.annualSavings.toLocaleString()}
 Payback Period: ${reportData.financialAnalysis.paybackPeriod} years
-25-Year Net Profit: AED ${reportData.financialAnalysis.roi25Year.toLocaleString()}`.trim();
+25-Year Net Profit: AED ${reportData.financialAnalysis.roi25Year.toLocaleString()}
+25-Year ROI: ${roiPercent.toFixed(0)}%`.trim();
+    
+    if (showIdealOutput) {
+        summary += "\n\nNote: These values assume ideal conditions with no system losses. Actual output may vary.";
+    }
+
     navigator.clipboard.writeText(summary).then(() => alert('Report copied to clipboard!'));
   };
 
@@ -523,6 +544,10 @@ Payback Period: ${reportData.financialAnalysis.paybackPeriod} years
             <Input label="Peak Sun Hours" type="number" value={peakSunHours} onChange={(e) => setPeakSunHours(parseFloat(e.target.value) || 0)} step={0.1} />
             <Input label="System Efficiency (%)" type="number" value={systemEfficiency} onChange={(e) => setSystemEfficiency(parseFloat(e.target.value) || 0)} />
             <Input label="Panel Wattage (W)" type="number" value={panelWattage} onChange={(e) => setPanelWattage(parseFloat(e.target.value) || 0)} />
+        </div>
+        <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-200">
+            <input type="checkbox" id="ideal-output-toggle" checked={showIdealOutput} onChange={(e) => setShowIdealOutput(e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-brand-primary focus:ring-brand-primary" />
+            <label htmlFor="ideal-output-toggle" className="text-sm text-gray-600">Show ideal system output (no efficiency or real-world losses)</label>
         </div>
       </Card>
       {bills.length > 0 && (
