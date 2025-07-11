@@ -1,4 +1,3 @@
-
 import { AnyComponent, Supplier, Project, ClientInfo, CostAnalysis, ProjectComponent, ComponentType } from '../types';
 
 const getApiUrl = (): string | null => {
@@ -63,7 +62,7 @@ const stringifyProjectNestedObjects = (project: any) => {
 
 // Helper to stringify nested objects in a supplier before sending to the backend.
 const stringifySupplierNestedObjects = (supplier: Partial<Supplier>) => {
-    const toSend = {...supplier};
+    const toSend: any = {...supplier};
     if (Array.isArray(toSend.specialization)) {
         toSend.specialization = JSON.stringify(toSend.specialization);
     }
@@ -88,12 +87,22 @@ const safelyParseJSON = <T>(value: any, defaultValue: T): T => {
                 return defaultValue;
             }
         }
-        // Handles empty string or other non-JSON strings by returning default.
+        // Handles empty string or other non-JSON strings by returning the default.
         return defaultValue;
     }
     
-    // For non-string types (like already-parsed objects, numbers, booleans, null, undefined)
-    return value ?? defaultValue;
+    // For non-string types, only return the value if it's not nullish and has a compatible type.
+    if (value !== null && value !== undefined) {
+        if (Array.isArray(defaultValue) && Array.isArray(value)) {
+            return value as T;
+        }
+        if (typeof defaultValue === 'object' && !Array.isArray(defaultValue) && defaultValue !== null &&
+            typeof value === 'object' && !Array.isArray(value) && value !== null) {
+            return value as T;
+        }
+    }
+    
+    return defaultValue;
 };
 
 
