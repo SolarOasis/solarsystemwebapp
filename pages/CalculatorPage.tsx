@@ -103,12 +103,9 @@ const CalculatorPage: React.FC = () => {
   const [systemCost, setSystemCost] = useState<string>('');
   const [degradationRate, setDegradationRate] = useState(0.007);
   const [escalationRate, setEscalationRate] = useState(0.02);
-
+  
   // Calculated Values
-  const [seasonalAnalysis, setSeasonalAnalysis] = useState<SeasonalAnalysis>({ summerAvg: 0, winterAvg: 0, spikePercentage: 0, baseLoad: 0, coolingLoad: 0 });
-  const [systemRecommendation, setSystemRecommendation] = useState<SystemRecommendation>({ systemSize: 0, panelCount: 0, spaceRequired: 0, annualProduction: 0, inverterCapacity: 0, batteryCapacity: 0, summerCoverage: 0, winterCoverage: 0, annualCoverage: 0, dailyAvgConsumption: 0 });
   const [financialAnalysis, setFinancialAnalysis] = useState<FinancialAnalysis>({ annualSavings: 0, paybackPeriod: 0, roi25Year: 0, netMeteringCredits: 0, roiPercentage: 0 });
-  const [unusedSolar, setUnusedSolar] = useState(0);
 
   const calculateBillAmount = useCallback((consumption: number): number => {
     if (consumption <= 0) return 0;
@@ -212,8 +209,8 @@ const CalculatorPage: React.FC = () => {
     });
     setBills([...bills.map(b => ({ ...b, isEstimated: false })), ...estimatedBills].sort((a, b) => months.indexOf(a.month) - months.indexOf(b.month)));
   }, [bills, calculateBillAmount, months]);
-
-  useEffect(() => {
+  
+  const seasonalAnalysis = useMemo<SeasonalAnalysis>(() => {
     if (bills.length > 0) {
       const summerMonths = ['May', 'June', 'July', 'August', 'September'];
       const winterMonths = ['October', 'November', 'December', 'January', 'February', 'March', 'April'];
@@ -222,60 +219,75 @@ const CalculatorPage: React.FC = () => {
       const summerAvg = summerBills.length > 0 ? summerBills.reduce((sum, bill) => sum + bill.consumption, 0) / summerBills.length : 0;
       const winterAvg = winterBills.length > 0 ? winterBills.reduce((sum, bill) => sum + bill.consumption, 0) / winterBills.length : 0;
       const spikePercentage = winterAvg > 0 ? ((summerAvg - winterAvg) / winterAvg) * 100 : 0;
-      setSeasonalAnalysis({ summerAvg: Math.round(summerAvg), winterAvg: Math.round(winterAvg), spikePercentage: Math.round(spikePercentage), baseLoad: Math.round(winterAvg), coolingLoad: Math.round(summerAvg - winterAvg) });
-    } else {
-        setSeasonalAnalysis({ summerAvg: 0, winterAvg: 0, spikePercentage: 0, baseLoad: 0, coolingLoad: 0 });
+      return { summerAvg: Math.round(summerAvg), winterAvg: Math.round(winterAvg), spikePercentage: Math.round(spikePercentage), baseLoad: Math.round(winterAvg), coolingLoad: Math.round(summerAvg - winterAvg) };
     }
+    return { summerAvg: 0, winterAvg: 0, spikePercentage: 0, baseLoad: 0, coolingLoad: 0 };
   }, [bills]);
 
-  useEffect(() => {
-    if (bills.length > 0) {
-      const avgMonthlyConsumption = bills.reduce((sum, bill) => sum + bill.consumption, 0) / bills.length;
-      const avgDailyConsumption = avgMonthlyConsumption / 30;
-      let targetConsumption = avgDailyConsumption;
-      if (authority === 'FEWA' && !batteryEnabled) targetConsumption = avgDailyConsumption * (daytimeConsumption / 100);
-      
-      const realWorldLosses = 0.90;
-      const systemSize = (targetConsumption / (peakSunHours * (systemEfficiency / 100)));
-      const panelCount = Math.ceil((systemSize * 1000) / panelWattage);
-      const actualSystemSize = (panelCount * panelWattage) / 1000;
-      const spaceRequired = panelCount * 2.1;
+  const consumptionStats = useMemo(() => {
+    if (bills.length === 0) return { avgMonthly: 0, avgDaily: 0, totalAnnual: 0 };
+    const avgMonthly = bills.reduce((sum, b) => sum + b.consumption, 0) / bills.length;
+    const avgDaily = avgMonthly / 30;
+    const totalAnnual = avgMonthly * 12;
+    return { avgMonthly, avgDaily, totalAnnual };
+  }, [bills]);
 
-      const rawProduction = actualSystemSize * peakSunHours * 365;
-      const adjustedEfficiency = showIdealOutput ? 1 : systemEfficiency / 100;
-      const adjustedLosses = showIdealOutput ? 1 : realWorldLosses;
-      const annualProduction = rawProduction * adjustedEfficiency * adjustedLosses;
+  const systemMetrics = useMemo(() => {
+    if (consumptionStats.avgDaily === 0) return { systemSize: 0, panelCount: 0, spaceRequired: 0, annualProduction: 0, actualSystemSize: 0 };
+    let targetConsumption = consumptionStats.avgDaily;
+    if (authority === 'FEWA' && !batteryEnabled) {
+        targetConsumption = consumptionStats.avgDaily * (daytimeConsumption / 100);
+    }
+    const realWorldLosses = 0.90;
+    const systemSize = (targetConsumption / (peakSunHours * (systemEfficiency / 100)));
+    const panelCount = Math.ceil((systemSize * 1000) / panelWattage);
+    const actualSystemSize = (panelCount * panelWattage) / 1000;
+    const spaceRequired = panelCount * 2.1;
+    const rawProduction = actualSystemSize * peakSunHours * 365;
+    const adjustedEfficiency = showIdealOutput ? 1 : systemEfficiency / 100;
+    const adjustedLosses = showIdealOutput ? 1 : realWorldLosses;
+    const annualProduction = rawProduction * adjustedEfficiency * adjustedLosses;
+    return { 
+        systemSize: Math.round(actualSystemSize * 10) / 10, 
+        panelCount, 
+        spaceRequired: Math.round(spaceRequired), 
+        annualProduction: Math.round(annualProduction), 
+        actualSystemSize 
+    };
+  }, [consumptionStats, authority, batteryEnabled, daytimeConsumption, peakSunHours, systemEfficiency, panelWattage, showIdealOutput]);
 
-      const totalConsumption = avgMonthlyConsumption * 12;
-      const unused = Math.max(0, annualProduction - totalConsumption);
-      setUnusedSolar(Math.round(unused));
-      
-      const inverterCapacity = Math.ceil(actualSystemSize * inverterRatio * 10) / 10;
-      
-      let batteryCapacity = 0;
-      if (authority === 'FEWA' && batteryEnabled) {
+  const unusedSolar = useMemo(() => {
+    const unused = Math.max(0, systemMetrics.annualProduction - consumptionStats.totalAnnual);
+    return Math.round(unused);
+  }, [systemMetrics.annualProduction, consumptionStats.totalAnnual]);
+
+  const systemRecommendation = useMemo<SystemRecommendation>(() => {
+    const { actualSystemSize, annualProduction } = systemMetrics;
+    const { avgMonthly, avgDaily } = consumptionStats;
+    const inverterCapacity = Math.ceil(actualSystemSize * inverterRatio * 10) / 10;
+    let batteryCapacity = 0;
+    if (authority === 'FEWA' && batteryEnabled) {
         if (batteryMode === 'night') {
-            const nightConsumption = avgDailyConsumption * (1 - daytimeConsumption / 100);
+            const nightConsumption = avgDaily * (1 - daytimeConsumption / 100);
             batteryCapacity = Math.ceil(nightConsumption / (batteryEfficiency * usableDoD));
         } else if (batteryMode === 'unused') {
-            const unusedKwh = Math.max(0, annualProduction - totalConsumption);
-            batteryCapacity = Math.ceil((unusedKwh / 365) / (batteryEfficiency * usableDoD));
+            batteryCapacity = Math.ceil((unusedSolar / 365) / (batteryEfficiency * usableDoD));
         }
-      }
-      
-      const monthlyProduction = annualProduction / 12;
-      const summerCoverage = seasonalAnalysis.summerAvg > 0 ? (monthlyProduction / seasonalAnalysis.summerAvg) * 100 : 100;
-      const winterCoverage = seasonalAnalysis.winterAvg > 0 ? (monthlyProduction / seasonalAnalysis.winterAvg) * 100 : 100;
-      const annualCoverage = avgMonthlyConsumption > 0 ? (annualProduction / (avgMonthlyConsumption * 12)) * 100 : 100;
-      setSystemRecommendation({
-        systemSize: Math.round(actualSystemSize * 10) / 10, panelCount, spaceRequired: Math.round(spaceRequired), annualProduction: Math.round(annualProduction), inverterCapacity, batteryCapacity,
-        summerCoverage: Math.min(Math.round(summerCoverage), 100), winterCoverage: Math.min(Math.round(winterCoverage), 100), annualCoverage: Math.min(Math.round(annualCoverage), 100),
-        dailyAvgConsumption: Math.round(avgDailyConsumption)
-      });
-    } else {
-        setSystemRecommendation({ systemSize: 0, panelCount: 0, spaceRequired: 0, annualProduction: 0, inverterCapacity: 0, batteryCapacity: 0, summerCoverage: 0, winterCoverage: 0, annualCoverage: 0, dailyAvgConsumption: 0 });
     }
-  }, [bills, authority, batteryEnabled, daytimeConsumption, peakSunHours, systemEfficiency, panelWattage, seasonalAnalysis.summerAvg, seasonalAnalysis.winterAvg, batteryEfficiency, usableDoD, showIdealOutput, inverterRatio, batteryMode]);
+    const monthlyProduction = annualProduction / 12;
+    const summerCoverage = seasonalAnalysis.summerAvg > 0 ? (monthlyProduction / seasonalAnalysis.summerAvg) * 100 : 100;
+    const winterCoverage = seasonalAnalysis.winterAvg > 0 ? (monthlyProduction / seasonalAnalysis.winterAvg) * 100 : 100;
+    const annualCoverage = avgMonthly > 0 ? (annualProduction / (avgMonthly * 12)) * 100 : 100;
+    return {
+        ...systemMetrics,
+        inverterCapacity,
+        batteryCapacity,
+        summerCoverage: Math.min(Math.round(summerCoverage), 100),
+        winterCoverage: Math.min(Math.round(winterCoverage), 100),
+        annualCoverage: Math.min(Math.round(annualCoverage), 100),
+        dailyAvgConsumption: Math.round(avgDaily),
+    };
+  }, [systemMetrics, consumptionStats, seasonalAnalysis, authority, batteryEnabled, batteryMode, daytimeConsumption, batteryEfficiency, usableDoD, inverterRatio, unusedSolar]);
 
   const calculateBillAmountWithEscalation = useCallback((consumption: number, year: number, escRate: number): number => {
     if (consumption <= 0) return 0;
@@ -331,26 +343,32 @@ const CalculatorPage: React.FC = () => {
           const monthlyProduction = (monthlyProductionMap[monthName] || 0) * degradationFactor;
           const originalBill = calculateBillAmountWithEscalation(monthlyConsumption, year, escalationRate);
           let newBill = 0;
+          let monthlyServiceChargeSavings = 0;
 
           if (authority === 'DEWA') {
               const netKwh = monthlyProduction - monthlyConsumption;
-              if (netKwh >= 0) { netMeteringCreditsKwh += netKwh; newBill = 0; }
-              else {
+              if (netKwh >= 0) { 
+                  netMeteringCreditsKwh += netKwh; 
+                  newBill = 0; 
+              } else {
                   const drawnFromCredits = Math.min(Math.abs(netKwh), netMeteringCreditsKwh);
                   netMeteringCreditsKwh -= drawnFromCredits;
                   newBill = calculateBillAmountWithEscalation(Math.abs(netKwh) - drawnFromCredits, year, escalationRate);
               }
           } else { // FEWA
+              let savedKwh = 0;
               if (batteryEnabled) {
-                  const savedKwh = Math.min(monthlyProduction * batteryEfficiency, monthlyConsumption);
+                  savedKwh = Math.min(monthlyProduction * batteryEfficiency, monthlyConsumption);
                   newBill = calculateBillAmountWithEscalation(monthlyConsumption - savedKwh, year, escalationRate);
               } else { // FEWA no battery
                   const daytimeLoadKwh = monthlyConsumption * (daytimeConsumption / 100);
-                  const savedKwh = Math.min(monthlyProduction, daytimeLoadKwh);
+                  savedKwh = Math.min(monthlyProduction, daytimeLoadKwh);
                   newBill = calculateBillAmountWithEscalation(monthlyConsumption - savedKwh, year, escalationRate);
               }
+              // Add the 5 fils/kWh service charge saving for every self-consumed kWh
+              monthlyServiceChargeSavings = savedKwh * 0.05;
           }
-          yearlySavings += (originalBill - newBill);
+          yearlySavings += (originalBill - newBill) + monthlyServiceChargeSavings;
       }
       if (year === 1) firstYearAnnualSavings = yearlySavings;
       const yearlyCashFlow = yearlySavings - maintenanceCostPerYear;
@@ -371,7 +389,7 @@ const CalculatorPage: React.FC = () => {
         netMeteringCredits: Math.round(netMeteringCreditsValue),
         roiPercentage: Math.round(roiPercentage)
     });
-  }, [systemCost, bills, systemRecommendation, authority, batteryEnabled, daytimeConsumption, getAverageRate, calculateBillAmountWithEscalation, monthlyProductionMap, degradationRate, escalationRate, batteryEfficiency]);
+  }, [systemCost, bills, systemRecommendation.annualProduction, authority, batteryEnabled, daytimeConsumption, getAverageRate, calculateBillAmountWithEscalation, monthlyProductionMap, degradationRate, escalationRate, batteryEfficiency]);
 
   const generateMonthlyData = () => months.map(month => ({ 
       month: month.substring(0, 3), 
@@ -381,7 +399,7 @@ const CalculatorPage: React.FC = () => {
   
   const copyReport = () => {
     const reportData = { projectName: projectName || 'Solar Project', location, authority, batteryEnabled, seasonalAnalysis, systemRecommendation, financialAnalysis, systemCost };
-    const totalAnnualConsumption = bills.reduce((sum, bill) => sum + bill.consumption, 0);
+    const totalAnnualConsumption = consumptionStats.totalAnnual;
     const annualProduction = reportData.systemRecommendation.annualProduction;
     const coveragePercent = totalAnnualConsumption > 0 ? (annualProduction / totalAnnualConsumption) * 100 : 0;
     const roi25Year = reportData.financialAnalysis.roi25Year;
@@ -418,8 +436,20 @@ Payback Period: ${reportData.financialAnalysis.paybackPeriod} years
 25-Year Net Profit: AED ${reportData.financialAnalysis.roi25Year.toLocaleString()}
 25-Year ROI: ${roiPercent.toFixed(0)}%`.trim();
     
+    const footnotes = [];
+    
+    footnotes.push(`Financials include ${(degradationRate * 100).toFixed(1)}% annual degradation and 1% annual maintenance.`);
+
+    if (coveragePercent < 80 && coveragePercent > 0) {
+        footnotes.push(`To increase coverage, adding battery storage or utilizing more roof space may be required.`);
+    }
+
     if (showIdealOutput) {
-        summary += "\n\nNote: These values assume ideal conditions with no system losses. Actual output may vary.";
+        footnotes.push("Values assume ideal conditions with no system losses. Actual output may vary.");
+    }
+
+    if (footnotes.length > 0) {
+        summary += `\n\n----------------------------\nNotes:\n- ${footnotes.join('\n- ')}`;
     }
 
     navigator.clipboard.writeText(summary).then(() => alert('Report copied to clipboard!'));
