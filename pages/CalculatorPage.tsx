@@ -60,7 +60,8 @@ const CITY_SEASONAL_FACTORS: { [city: string]: { [month: string]: number } } = {
   'Sharjah': { January: 0.72, February: 0.77, March: 0.90, April: 1.04, May: 1.18, June: 1.25, July: 1.28, August: 1.21, September: 1.10, October: 0.93, November: 0.82, December: 0.74 },
   'Abu Dhabi': { January: 0.74, February: 0.79, March: 0.91, April: 1.05, May: 1.17, June: 1.24, July: 1.26, August: 1.22, September: 1.10, October: 0.95, November: 0.84, December: 0.75 },
   'Ras Al Khaimah': { January: 0.71, February: 0.76, March: 0.89, April: 1.03, May: 1.17, June: 1.25, July: 1.28, August: 1.23, September: 1.12, October: 0.95, November: 0.83, December: 0.73 },
-  'Fujairah': { January: 0.69, February: 0.74, March: 0.86, April: 1.00, May: 1.14, June: 1.23, July: 1.27, August: 1.21, September: 1.10, October: 0.94, November: 0.81, December: 0.71 }
+  'Fujairah': { January: 0.69, February: 0.74, March: 0.86, April: 1.00, May: 1.14, June: 1.23, July: 1.27, August: 1.21, September: 1.10, October: 0.94, November: 0.81, December: 0.71 },
+  'Umm Al Quwain': { January: 0.72, February: 0.77, March: 0.91, April: 1.04, May: 1.16, June: 1.24, July: 1.27, August: 1.22, September: 1.11, October: 0.94, November: 0.83, December: 0.74 }
 };
 
 const months: string[] = ['January', 'February', 'March', 'April', 'May', 'June', 
@@ -420,7 +421,7 @@ Payback Period: ${reportData.financialAnalysis.paybackPeriod} years
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
               <Select value={city} onChange={(e) => setCity(e.target.value)}>
-                {['Dubai', 'Ajman', 'Sharjah', 'Abu Dhabi', 'Ras Al Khaimah', 'Fujairah'].map(cityOption => (
+                {['Dubai', 'Ajman', 'Sharjah', 'Abu Dhabi', 'Ras Al Khaimah', 'Fujairah', 'Umm Al Quwain'].map(cityOption => (
                   <option key={cityOption} value={cityOption}>{cityOption}</option>
                 ))}
               </Select>
