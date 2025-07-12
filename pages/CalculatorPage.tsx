@@ -237,10 +237,20 @@ const CalculatorPage: React.FC = () => {
 
   const systemMetrics = useMemo(() => {
     if (consumptionStats.avgDaily === 0) return { systemSize: 0, panelCount: 0, spaceRequired: 0, annualProduction: 0, actualSystemSize: 0 };
-    let targetConsumption = consumptionStats.avgDaily;
-    if (authority === 'FEWA' && !batteryEnabled) {
-        targetConsumption = consumptionStats.avgDaily * (daytimeConsumption / 100);
+    
+    let targetConsumption = consumptionStats.avgDaily; // Default to sizing for 100% (e.g., for DEWA)
+
+    // For FEWA projects, the sizing strategy depends on the battery mode
+    if (authority === 'FEWA') {
+        // If the goal is 'night' backup, we MUST size for the full day's consumption.
+        // Otherwise (no battery OR just storing unused solar from a daytime system), we size ONLY for the daytime load.
+        if (batteryEnabled && batteryMode === 'night') {
+            targetConsumption = consumptionStats.avgDaily;
+        } else {
+            targetConsumption = consumptionStats.avgDaily * (daytimeConsumption / 100);
+        }
     }
+    
     const realWorldLosses = 0.90;
     const systemSize = (targetConsumption / (peakSunHours * (systemEfficiency / 100)));
     const panelCount = Math.ceil((systemSize * 1000) / panelWattage);
@@ -250,6 +260,7 @@ const CalculatorPage: React.FC = () => {
     const adjustedEfficiency = showIdealOutput ? 1 : systemEfficiency / 100;
     const adjustedLosses = showIdealOutput ? 1 : realWorldLosses;
     const annualProduction = rawProduction * adjustedEfficiency * adjustedLosses;
+    
     return { 
         systemSize: Math.round(actualSystemSize * 10) / 10, 
         panelCount, 
@@ -257,7 +268,7 @@ const CalculatorPage: React.FC = () => {
         annualProduction: Math.round(annualProduction), 
         actualSystemSize 
     };
-  }, [consumptionStats, authority, batteryEnabled, daytimeConsumption, peakSunHours, systemEfficiency, panelWattage, showIdealOutput]);
+  }, [consumptionStats, authority, batteryEnabled, batteryMode, daytimeConsumption, peakSunHours, systemEfficiency, panelWattage, showIdealOutput]);
 
   const monthlyProductionMap = useMemo(() => {
     const { annualProduction } = systemMetrics;
@@ -409,7 +420,7 @@ const CalculatorPage: React.FC = () => {
         netMeteringCredits: Math.round(netMeteringCreditsValue),
         roiPercentage: Math.round(roiPercentage)
     });
-  }, [systemCost, bills, systemRecommendation.annualProduction, authority, batteryEnabled, daytimeConsumption, getAverageRate, calculateBillAmountWithEscalation, monthlyProductionMap, degradationRate, escalationRate, batteryEfficiency]);
+  }, [systemCost, bills, systemRecommendation.annualProduction, authority, batteryEnabled, daytimeConsumption, getAverageRate, calculateBillAmountWithEscalation, monthlyProductionMap, degradationRate, escalationRate, batteryEfficiency, batteryMode]);
 
   const generateMonthlyData = () => months.map(month => ({ 
       month: month.substring(0, 3), 
@@ -685,7 +696,7 @@ Payback Period: ${reportData.financialAnalysis.paybackPeriod} years
             <div className="p-4 rounded-lg text-white bg-brand-primary"><p className="text-sm opacity-90">Space Required</p><p className="text-2xl font-bold">{systemRecommendation.spaceRequired} m²</p></div>
             <div className="p-4 rounded-lg bg-brand-secondary"><p className="text-sm text-brand-primary">Annual Production</p><p className="text-2xl font-bold text-brand-primary">{systemRecommendation.annualProduction.toLocaleString()} kWh</p></div>
           </div>
-          {unusedSolar > 0 && (
+          {unusedSolar > 0 && batteryMode !== 'night' && (
             <div className="text-sm text-amber-600 my-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-center">
               Estimated unused solar: <strong>{unusedSolar.toLocaleString()} kWh/year</strong>. 
               <button
