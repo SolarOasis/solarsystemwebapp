@@ -288,26 +288,23 @@ const CalculatorPage: React.FC = () => {
 
   const unusedSolar = useMemo(() => {
     if (systemMetrics.annualProduction === 0 || bills.length === 0) return 0;
-    let totalUsedSolar = 0;
-    const degradationFactor = 1; // year 1 only
+    
+    let totalSelfConsumed = 0;
     for (const month of months) {
-      const monthlyProduction = (monthlyProductionMap[month] || 0) * degradationFactor;
-      const monthlyConsumption = bills.find(b => b.month === month)?.consumption || (consumptionStats.avgMonthly || 0);
-      if (authority === 'FEWA') {
-        if (batteryEnabled) {
-          const used = Math.min(monthlyProduction * idealBatteryEfficiency, monthlyConsumption);
-          totalUsedSolar += used;
-        } else {
-          const daytimeKwh = monthlyConsumption * (daytimeConsumption / 100);
-          const used = Math.min(monthlyProduction, daytimeKwh);
-          totalUsedSolar += used;
+        const monthlyProduction = monthlyProductionMap[month] || 0;
+        const monthlyConsumption = bills.find(b => b.month === month)?.consumption || consumptionStats.avgMonthly || 0;
+
+        let usedThisMonth = 0;
+        if (authority === 'FEWA') {
+            const daytimeLoadKwh = monthlyConsumption * (daytimeConsumption / 100);
+            usedThisMonth = Math.min(monthlyProduction, daytimeLoadKwh);
+        } else { // DEWA
+            usedThisMonth = Math.min(monthlyProduction, monthlyConsumption);
         }
-      } else {
-        totalUsedSolar += Math.min(monthlyProduction, monthlyConsumption);
-      }
+        totalSelfConsumed += usedThisMonth;
     }
-    return Math.round(systemMetrics.annualProduction - totalUsedSolar);
-  }, [systemMetrics.annualProduction, monthlyProductionMap, bills, authority, batteryEnabled, idealBatteryEfficiency, daytimeConsumption, consumptionStats.avgMonthly]);
+    return Math.round(systemMetrics.annualProduction - totalSelfConsumed);
+  }, [systemMetrics.annualProduction, monthlyProductionMap, bills, authority, daytimeConsumption, consumptionStats.avgMonthly]);
 
   const systemRecommendation = useMemo<SystemRecommendation>(() => {
     const { actualSystemSize, annualProduction } = systemMetrics;
@@ -717,7 +714,7 @@ Payback Period: ${reportData.financialAnalysis.paybackPeriod} years
             </div>
           )}
 
-          {unusedSolar > 0 && batteryMode !== 'night' && (
+          {unusedSolar > 0 && (!batteryEnabled || batteryMode !== 'night') && (
             <div className="text-sm text-amber-600 my-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-center">
               Estimated unused solar: <strong>{unusedSolar.toLocaleString()} kWh/year</strong>. 
               <button
