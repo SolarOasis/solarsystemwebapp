@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, Button, Input, Select } from '../components/ui';
-import { Sun, Battery, TrendingUp, FileText, AlertCircle, Trash2, PlusCircle, Download, XCircle, Wand2, Info } from 'lucide-react';
+import { Sun, Battery, TrendingUp, FileText, AlertCircle, Trash2, PlusCircle, Download, XCircle, Wand2, Info, Upload } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 // Type definitions
@@ -64,6 +64,8 @@ const CITY_SEASONAL_FACTORS: { [city: string]: { [month: string]: number } } = {
   'Umm Al Quwain': { January: 0.72, February: 0.77, March: 0.91, April: 1.04, May: 1.16, June: 1.24, July: 1.27, August: 1.22, September: 1.11, October: 0.94, November: 0.83, December: 0.74 }
 };
 
+const FEWA_SERVICE_CHARGE_PER_KWH = 0.05;
+
 const months: string[] = ['January', 'February', 'March', 'April', 'May', 'June', 
                   'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -86,6 +88,7 @@ const CalculatorPage: React.FC = () => {
     { from: 4001, to: 6000, rate: 0.32 },
     { from: 6001, to: Infinity, rate: 0.38 }
   ]);
+  const [pendingEstimates, setPendingEstimates] = useState<Bill[]>([]);
 
   // System Parameters
   const [daytimeConsumption, setDaytimeConsumption] = useState<number>(60);
@@ -207,7 +210,7 @@ const CalculatorPage: React.FC = () => {
         const estimatedConsumption = Math.round(normalizedAvgConsumption * UAE_SEASONAL_FACTORS[month]);
         return { month, consumption: estimatedConsumption, amount: calculateBillAmount(estimatedConsumption), isEstimated: true };
     });
-    setBills([...bills.map(b => ({ ...b, isEstimated: false })), ...estimatedBills].sort((a, b) => months.indexOf(a.month) - months.indexOf(b.month)));
+    setPendingEstimates(estimatedBills);
   }, [bills, calculateBillAmount, months]);
   
   const seasonalAnalysis = useMemo<SeasonalAnalysis>(() => {
@@ -256,10 +259,41 @@ const CalculatorPage: React.FC = () => {
     };
   }, [consumptionStats, authority, batteryEnabled, daytimeConsumption, peakSunHours, systemEfficiency, panelWattage, showIdealOutput]);
 
+  const monthlyProductionMap = useMemo(() => {
+    const { annualProduction } = systemMetrics;
+    if (annualProduction === 0) return months.reduce((acc, month) => ({ ...acc, [month]: 0 }), {});
+    
+    const seasonalFactors = CITY_SEASONAL_FACTORS[city];
+    const totalFactor = months.reduce((sum, m) => sum + seasonalFactors[m], 0);
+    return months.reduce((acc, month) => {
+      const factor = seasonalFactors[month];
+      acc[month] = (annualProduction * (factor / totalFactor));
+      return acc;
+    }, {} as { [key: string]: number });
+  }, [systemMetrics.annualProduction, city]);
+
   const unusedSolar = useMemo(() => {
-    const unused = Math.max(0, systemMetrics.annualProduction - consumptionStats.totalAnnual);
-    return Math.round(unused);
-  }, [systemMetrics.annualProduction, consumptionStats.totalAnnual]);
+    if (systemMetrics.annualProduction === 0 || bills.length === 0) return 0;
+    let totalUsedSolar = 0;
+    const degradationFactor = 1; // year 1 only
+    for (const month of months) {
+      const monthlyProduction = (monthlyProductionMap[month] || 0) * degradationFactor;
+      const monthlyConsumption = bills.find(b => b.month === month)?.consumption || (consumptionStats.avgMonthly || 0);
+      if (authority === 'FEWA') {
+        if (batteryEnabled) {
+          const used = Math.min(monthlyProduction * batteryEfficiency, monthlyConsumption);
+          totalUsedSolar += used;
+        } else {
+          const daytimeKwh = monthlyConsumption * (daytimeConsumption / 100);
+          const used = Math.min(monthlyProduction, daytimeKwh);
+          totalUsedSolar += used;
+        }
+      } else {
+        totalUsedSolar += Math.min(monthlyProduction, monthlyConsumption);
+      }
+    }
+    return Math.round(systemMetrics.annualProduction - totalUsedSolar);
+  }, [systemMetrics.annualProduction, monthlyProductionMap, bills, authority, batteryEnabled, batteryEfficiency, daytimeConsumption, consumptionStats.avgMonthly]);
 
   const systemRecommendation = useMemo<SystemRecommendation>(() => {
     const { actualSystemSize, annualProduction } = systemMetrics;
@@ -304,19 +338,6 @@ const CalculatorPage: React.FC = () => {
     }
     return totalAmount;
   }, [rateStructure, electricityRate, tiers]);
-
-  const monthlyProductionMap = useMemo(() => {
-    const { annualProduction } = systemRecommendation;
-    if (annualProduction === 0) return months.reduce((acc, month) => ({ ...acc, [month]: 0 }), {});
-    
-    const seasonalFactors = CITY_SEASONAL_FACTORS[city];
-    const totalFactor = months.reduce((sum, m) => sum + seasonalFactors[m], 0);
-    return months.reduce((acc, month) => {
-      const factor = seasonalFactors[month];
-      acc[month] = (annualProduction * (factor / totalFactor));
-      return acc;
-    }, {} as { [key: string]: number });
-  }, [systemRecommendation.annualProduction, city]);
 
   useEffect(() => {
     if (!systemCost || bills.length === 0 || systemRecommendation.annualProduction === 0) {
@@ -365,8 +386,7 @@ const CalculatorPage: React.FC = () => {
                   savedKwh = Math.min(monthlyProduction, daytimeLoadKwh);
                   newBill = calculateBillAmountWithEscalation(monthlyConsumption - savedKwh, year, escalationRate);
               }
-              // Add the 5 fils/kWh service charge saving for every self-consumed kWh
-              monthlyServiceChargeSavings = savedKwh * 0.05;
+              monthlyServiceChargeSavings = savedKwh * FEWA_SERVICE_CHARGE_PER_KWH;
           }
           yearlySavings += (originalBill - newBill) + monthlyServiceChargeSavings;
       }
@@ -540,8 +560,9 @@ Payback Period: ${reportData.financialAnalysis.paybackPeriod} years
             )}
           </div>
         </div>
+
         {bills.length > 0 && (
-          <div className="p-4 bg-white rounded-xl shadow-lg mt-6">
+          <div className="p-4 bg-white rounded-xl mt-6">
             <div className="flex justify-between items-center mb-2"><h3 className="text-md font-semibold text-gray-700">Added Bills ({bills.length})</h3><Button onClick={() => setBills([])} variant="ghost" className="text-red-500"><XCircle size={16} className="mr-1"/>Clear All</Button></div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
               {bills.map((bill, index) => (
@@ -552,6 +573,39 @@ Payback Period: ${reportData.financialAnalysis.paybackPeriod} years
               ))}
             </div>
             {bills.length > 0 && bills.length < 12 && (<div className="mt-4 text-center"><Button onClick={handleEstimateFromPartialData} variant="primary"><Wand2 size={16} className="mr-2"/>Estimate Full Year from {bills.length} Bill{bills.length > 1 ? 's' : ''}</Button></div>)}
+            
+            {pendingEstimates.length > 0 && (
+              <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <h3 className="font-medium text-brand-primary mb-2">Estimated Months</h3>
+                <p className="text-sm mb-3">We’ve estimated the missing months. You can review and edit them before applying:</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mb-4">
+                  {pendingEstimates.map((bill, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <span className="text-sm w-12">{bill.month}</span>
+                      <input
+                        type="number"
+                        value={bill.consumption}
+                        onChange={(e) => {
+                          const newEstimates = [...pendingEstimates];
+                          newEstimates[index].consumption = parseFloat(e.target.value) || 0;
+                          newEstimates[index].amount = calculateBillAmount(newEstimates[index].consumption);
+                          setPendingEstimates(newEstimates);
+                        }}
+                        className="w-24 px-2 py-1 border rounded-md text-sm shadow-sm focus:outline-none focus:ring-brand-primary focus:border-brand-primary"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-4">
+                  <Button onClick={() => {
+                    setBills(prev => [...prev.filter(b => !b.isEstimated), ...pendingEstimates].sort((a, b) => months.indexOf(a.month) - months.indexOf(b.month)));
+                    setPendingEstimates([]);
+                  }} variant="primary">Apply Estimates</Button>
+                  <Button onClick={() => setPendingEstimates([])} variant="ghost">Cancel</Button>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-6 p-4 rounded-lg bg-brand-light">
               {Object.entries({ 
                   'Daily Avg': `${systemRecommendation.dailyAvgConsumption} kWh/day`,
@@ -633,10 +687,31 @@ Payback Period: ${reportData.financialAnalysis.paybackPeriod} years
           </div>
           {unusedSolar > 0 && (
             <div className="text-sm text-amber-600 my-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-center">
-              Estimated unused solar: <strong>{unusedSolar.toLocaleString()} kWh/year</strong>. This energy could be stored with a battery or exported.
+              Estimated unused solar: <strong>{unusedSolar.toLocaleString()} kWh/year</strong>. 
+              <button
+                className="underline text-brand-primary ml-1 disabled:text-gray-400 disabled:no-underline"
+                onClick={() => {
+                    if (authority === 'FEWA') {
+                        setBatteryEnabled(true);
+                    }
+                    setBatteryMode('unused');
+                }}
+                disabled={authority === 'DEWA'}
+                title={authority === 'DEWA' ? 'Battery storage is not applicable for DEWA projects in this calculator.' : 'Calculate battery size needed to store unused solar'}
+              >
+                Store this?
+              </button>
             </div>
           )}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6"><div className="text-center"><p className="text-sm text-gray-600">Inverter Capacity</p><p className="text-xl font-semibold text-brand-primary">{systemRecommendation.inverterCapacity} kW</p></div>{batteryEnabled && authority === 'FEWA' && (<div className="text-center"><p className="text-sm text-gray-600">Battery Capacity</p><p className="text-xl font-semibold text-brand-primary">{systemRecommendation.batteryCapacity} kWh</p></div>)}</div>
+          
+          {batteryEnabled && batteryMode === 'unused' && (
+            <div className="bg-blue-100 border border-blue-200 text-sm p-3 rounded-lg mt-4">
+              To capture unused solar energy, you'd need a battery of approximately <strong>{systemRecommendation.batteryCapacity} kWh</strong>.
+              This helps minimize energy waste and can improve ROI.
+            </div>
+          )}
+
           <div className="mb-6"><h3 className="text-lg font-semibold mb-3 text-brand-primary">Seasonal Coverage Analysis</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div><p className="text-sm text-gray-600">Summer Coverage</p><div className="w-full bg-gray-200 rounded-full h-4 mt-1"><div className="h-4 rounded-full bg-brand-secondary" style={{width: `${systemRecommendation.summerCoverage}%`}}></div></div><p className="text-sm font-semibold mt-1 text-brand-primary">{systemRecommendation.summerCoverage}%</p></div>
@@ -655,7 +730,18 @@ Payback Period: ${reportData.financialAnalysis.paybackPeriod} years
 
           {systemCost && (<>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-              <div className="bg-green-100 border border-green-200 p-4 rounded-lg"><p className="text-sm text-gray-600">First-Year Savings</p><p className="text-2xl font-bold text-green-700">AED {financialAnalysis.annualSavings.toLocaleString()}</p></div>
+              <div className="bg-green-100 border border-green-200 p-4 rounded-lg">
+                <p className="text-sm text-gray-600 flex justify-between items-center">
+                    <span>First-Year Savings</span>
+                    {authority === 'FEWA' && (
+                    <span className="text-xs text-green-800 bg-green-200 px-2 py-1 rounded-full flex items-center gap-1" title="Includes 5 fils/kWh service charge saving on self-consumed solar.">
+                        <TrendingUp size={12} />
+                        FEWA+
+                    </span>
+                    )}
+                </p>
+                <p className="text-2xl font-bold text-green-700">AED {financialAnalysis.annualSavings.toLocaleString()}</p>
+              </div>
               <div className="bg-blue-100 border border-blue-200 p-4 rounded-lg"><p className="text-sm text-gray-600">Payback Period</p><p className="text-2xl font-bold text-blue-700">{financialAnalysis.paybackPeriod > 0 ? `${financialAnalysis.paybackPeriod} years` : 'N/A'}</p></div>
               <div className="bg-purple-100 border border-purple-200 p-4 rounded-lg"><p className="text-sm text-gray-600">25-Year Net Profit</p><p className="text-2xl font-bold text-purple-700">AED {financialAnalysis.roi25Year.toLocaleString()}</p></div>
               <div className="bg-amber-100 border border-amber-200 p-4 rounded-lg"><p className="text-sm text-gray-600">25-Year ROI</p><p className="text-2xl font-bold text-amber-700">{financialAnalysis.roiPercentage.toLocaleString()}%</p></div>
@@ -669,6 +755,54 @@ Payback Period: ${reportData.financialAnalysis.paybackPeriod} years
           <div className="flex flex-col sm:flex-row gap-4">
             <Button onClick={copyReport} disabled={!systemCost || bills.length === 0}><FileText className="w-5 h-5 mr-2" /> Copy Report</Button>
             <Button onClick={saveProject} disabled={!systemCost || bills.length === 0} variant="secondary"><Download className="w-5 h-5 mr-2" /> Save Project</Button>
+             <Button variant="ghost">
+              <input
+                type="file"
+                accept=".json"
+                className="hidden"
+                id="import-project-input"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = (event) => {
+                    try {
+                      const data = JSON.parse(event.target?.result as string);
+                      // Load into state
+                      setProjectName(data.projectName || '');
+                      setLocation(data.location || '');
+                      setCity(data.city || 'Dubai');
+                      setAuthority(data.authority || 'DEWA');
+                      setBatteryEnabled(data.batteryEnabled || false);
+                      setBillInput('');
+                      setBills(data.bills || []);
+                      setRateStructure(data.rateStructure || 'flat');
+                      setElectricityRate(data.electricityRate || 0.38);
+                      setTiers(data.tiers || []);
+                      setDaytimeConsumption(data.daytimeConsumption || 60);
+                      setAvailableSpace(data.availableSpace || 100);
+                      setPeakSunHours(data.peakSunHours || 5.5);
+                      setSystemEfficiency(data.systemEfficiency || 85);
+                      setPanelWattage(data.panelWattage || 550);
+                      setSystemCost(data.systemCost || '');
+                      setDegradationRate(data.degradationRate || 0.007);
+                      setEscalationRate(data.escalationRate || 0.02);
+                      setBatteryEfficiency(data.batteryEfficiency || 0.95);
+                      setUsableDoD(data.usableDoD || 0.9);
+                      setInverterRatio(data.inverterRatio || 1.1);
+                      setBatteryMode(data.batteryMode || 'night');
+                      alert('Project imported successfully!');
+                    } catch (err) {
+                      alert('Failed to import project. Please check the file format.');
+                    }
+                  };
+                  reader.readAsText(file);
+                }}
+              />
+              <label htmlFor="import-project-input" className="cursor-pointer flex items-center">
+                <Upload className="w-5 h-5 mr-2" /> Import Project
+              </label>
+            </Button>
           </div>
         </Card>
         </>
