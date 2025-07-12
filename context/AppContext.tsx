@@ -20,7 +20,11 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
         case 'SET_INITIAL_DATA':
             return { ...state, ...action.payload, loading: false, error: null };
         case 'ADD_COMPONENT':
-            return { ...state, components: [...state.components, action.payload] };
+            // Handle bulk add gracefully
+            const componentsToAdd = Array.isArray(action.payload) ? action.payload : [action.payload];
+            const newComponentIds = new Set(componentsToAdd.map(c => c.id));
+            const uniqueCurrentComponents = state.components.filter(c => !newComponentIds.has(c.id));
+            return { ...state, components: [...uniqueCurrentComponents, ...componentsToAdd] };
         case 'UPDATE_COMPONENT':
             return {
                 ...state,
@@ -63,7 +67,7 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
 export const AppContext = createContext<{
     state: AppState;
     loadInitialData: () => void;
-    addComponent: (component: Omit<AnyComponent, 'id'>) => Promise<AnyComponent | undefined>;
+    addComponent: (component: Omit<AnyComponent, 'id'>, disableLoading?: boolean) => Promise<AnyComponent | undefined>;
     updateComponent: (component: AnyComponent) => Promise<AnyComponent | undefined>;
     deleteComponent: (component: {id: string, type: string}) => Promise<void>;
     addSupplier: (supplier: Omit<Supplier, 'id'>) => Promise<Supplier | undefined>;
@@ -113,9 +117,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const performApiAction = async <T, U>(
       apiFunc: (data: T) => Promise<U>, 
       data: T, 
-      successAction: (payload: U) => AppAction
+      successAction: (payload: U) => AppAction,
+      disableLoading = false
     ) => {
-        dispatch({ type: 'SET_LOADING', payload: true });
+        if (!disableLoading) dispatch({ type: 'SET_LOADING', payload: true });
         try {
             const result = await apiFunc(data);
             dispatch(successAction(result));
@@ -123,16 +128,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const errorMessage = err instanceof Error ? err.message : 'Operation failed';
             dispatch({ type: 'SET_ERROR', payload: `Operation failed: ${errorMessage}`});
         } finally {
-            dispatch({ type: 'SET_LOADING', payload: false });
+            if (!disableLoading) dispatch({ type: 'SET_LOADING', payload: false });
         }
     };
 
     const performAddApiAction = async <T, U>(
       apiFunc: (data: T) => Promise<U>, 
       data: T, 
-      successAction: (payload: U) => AppAction
+      successAction: (payload: U) => AppAction,
+      disableLoading = false
     ): Promise<U | undefined> => {
-        dispatch({ type: 'SET_LOADING', payload: true });
+        if (!disableLoading) dispatch({ type: 'SET_LOADING', payload: true });
         try {
             const result = await apiFunc(data);
             if (result) {
@@ -144,11 +150,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             dispatch({ type: 'SET_ERROR', payload: `Operation failed: ${errorMessage}`});
             return undefined;
         } finally {
-            dispatch({ type: 'SET_LOADING', payload: false });
+            if (!disableLoading) dispatch({ type: 'SET_LOADING', payload: false });
         }
     };
     
-    const addComponent = (c: Omit<AnyComponent, 'id'>) => performAddApiAction(api.addComponent, c, (p) => ({type: 'ADD_COMPONENT', payload: p as AnyComponent}));
+    const addComponent = (c: Omit<AnyComponent, 'id'>, disableLoading = false) => performAddApiAction(api.addComponent, c, (p) => ({type: 'ADD_COMPONENT', payload: p as AnyComponent}), disableLoading);
     const updateComponent = (c: AnyComponent) => performAddApiAction(api.updateComponent, c, (p) => ({type: 'UPDATE_COMPONENT', payload: p as AnyComponent}));
     const deleteComponent = (c: {id: string, type: string}) => performApiAction(api.deleteComponent, c, () => ({type: 'DELETE_COMPONENT', payload: c.id}));
     
