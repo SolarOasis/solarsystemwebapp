@@ -65,6 +65,7 @@ const CITY_SEASONAL_FACTORS: { [city: string]: { [month: string]: number } } = {
 };
 
 const FEWA_SERVICE_CHARGE_PER_KWH = 0.05;
+const REAL_WORLD_LOSS_FACTOR = 0.90; // Represents a 10% loss due to soiling, weather, etc.
 
 const months: string[] = ['January', 'February', 'March', 'April', 'May', 'June', 
                   'July', 'August', 'September', 'October', 'November', 'December'];
@@ -74,7 +75,7 @@ const CalculatorPage: React.FC = () => {
   const [authority, setAuthority] = useState<string>('DEWA');
   const [batteryEnabled, setBatteryEnabled] = useState<boolean>(false);
   const [projectName, setProjectName] = useState<string>('');
-  const [location, setLocation] = useState<string>('Dubai, UAE');
+  const [location, setLocation] = useState<string>('');
   const [city, setCity] = useState('Dubai');
 
   // Bill Inputs
@@ -109,6 +110,9 @@ const CalculatorPage: React.FC = () => {
   
   // Calculated Values
   const [financialAnalysis, setFinancialAnalysis] = useState<FinancialAnalysis>({ annualSavings: 0, paybackPeriod: 0, roi25Year: 0, netMeteringCredits: 0, roiPercentage: 0 });
+
+  const idealBatteryEfficiency = showIdealOutput ? 1 : batteryEfficiency;
+  const idealUsableDoD = showIdealOutput ? 1 : usableDoD;
 
   const calculateBillAmount = useCallback((consumption: number): number => {
     if (consumption <= 0) return 0;
@@ -251,14 +255,13 @@ const CalculatorPage: React.FC = () => {
         }
     }
     
-    const realWorldLosses = 0.90;
     const systemSize = (targetConsumption / (peakSunHours * (systemEfficiency / 100)));
     const panelCount = Math.ceil((systemSize * 1000) / panelWattage);
     const actualSystemSize = (panelCount * panelWattage) / 1000;
     const spaceRequired = panelCount * 2.1;
     const rawProduction = actualSystemSize * peakSunHours * 365;
     const adjustedEfficiency = showIdealOutput ? 1 : systemEfficiency / 100;
-    const adjustedLosses = showIdealOutput ? 1 : realWorldLosses;
+    const adjustedLosses = showIdealOutput ? 1 : REAL_WORLD_LOSS_FACTOR;
     const annualProduction = rawProduction * adjustedEfficiency * adjustedLosses;
     
     return { 
@@ -292,7 +295,7 @@ const CalculatorPage: React.FC = () => {
       const monthlyConsumption = bills.find(b => b.month === month)?.consumption || (consumptionStats.avgMonthly || 0);
       if (authority === 'FEWA') {
         if (batteryEnabled) {
-          const used = Math.min(monthlyProduction * batteryEfficiency, monthlyConsumption);
+          const used = Math.min(monthlyProduction * idealBatteryEfficiency, monthlyConsumption);
           totalUsedSolar += used;
         } else {
           const daytimeKwh = monthlyConsumption * (daytimeConsumption / 100);
@@ -304,7 +307,7 @@ const CalculatorPage: React.FC = () => {
       }
     }
     return Math.round(systemMetrics.annualProduction - totalUsedSolar);
-  }, [systemMetrics.annualProduction, monthlyProductionMap, bills, authority, batteryEnabled, batteryEfficiency, daytimeConsumption, consumptionStats.avgMonthly]);
+  }, [systemMetrics.annualProduction, monthlyProductionMap, bills, authority, batteryEnabled, idealBatteryEfficiency, daytimeConsumption, consumptionStats.avgMonthly]);
 
   const systemRecommendation = useMemo<SystemRecommendation>(() => {
     const { actualSystemSize, annualProduction } = systemMetrics;
@@ -314,9 +317,9 @@ const CalculatorPage: React.FC = () => {
     if (authority === 'FEWA' && batteryEnabled) {
         if (batteryMode === 'night') {
             const nightConsumption = avgDaily * (1 - daytimeConsumption / 100);
-            batteryCapacity = Math.ceil(nightConsumption / (batteryEfficiency * usableDoD));
+            batteryCapacity = Math.ceil(nightConsumption / (idealBatteryEfficiency * idealUsableDoD));
         } else if (batteryMode === 'unused') {
-            batteryCapacity = Math.ceil((unusedSolar / 365) / (batteryEfficiency * usableDoD));
+            batteryCapacity = Math.ceil((unusedSolar / 365) / (idealBatteryEfficiency * idealUsableDoD));
         }
     }
     const monthlyProduction = annualProduction / 12;
@@ -332,7 +335,7 @@ const CalculatorPage: React.FC = () => {
         annualCoverage: Math.min(Math.round(annualCoverage), 100),
         dailyAvgConsumption: Math.round(avgDaily),
     };
-  }, [systemMetrics, consumptionStats, seasonalAnalysis, authority, batteryEnabled, batteryMode, daytimeConsumption, batteryEfficiency, usableDoD, inverterRatio, unusedSolar]);
+  }, [systemMetrics, consumptionStats, seasonalAnalysis, authority, batteryEnabled, batteryMode, daytimeConsumption, idealBatteryEfficiency, inverterRatio, unusedSolar, idealUsableDoD]);
 
   const calculateBillAmountWithEscalation = useCallback((consumption: number, year: number, escRate: number): number => {
     if (consumption <= 0) return 0;
@@ -390,7 +393,7 @@ const CalculatorPage: React.FC = () => {
           } else { // FEWA
               let savedKwh = 0;
               if (batteryEnabled) {
-                  savedKwh = Math.min(monthlyProduction * batteryEfficiency, monthlyConsumption);
+                  savedKwh = Math.min(monthlyProduction * idealBatteryEfficiency, monthlyConsumption);
                   newBill = calculateBillAmountWithEscalation(monthlyConsumption - savedKwh, year, escalationRate);
               } else { // FEWA no battery
                   const daytimeLoadKwh = monthlyConsumption * (daytimeConsumption / 100);
@@ -420,7 +423,7 @@ const CalculatorPage: React.FC = () => {
         netMeteringCredits: Math.round(netMeteringCreditsValue),
         roiPercentage: Math.round(roiPercentage)
     });
-  }, [systemCost, bills, systemRecommendation.annualProduction, authority, batteryEnabled, daytimeConsumption, getAverageRate, calculateBillAmountWithEscalation, monthlyProductionMap, degradationRate, escalationRate, batteryEfficiency, batteryMode]);
+  }, [systemCost, bills, systemRecommendation.annualProduction, authority, batteryEnabled, daytimeConsumption, getAverageRate, calculateBillAmountWithEscalation, monthlyProductionMap, degradationRate, escalationRate, idealBatteryEfficiency, batteryMode]);
 
   const generateMonthlyData = () => months.map(month => ({ 
       month: month.substring(0, 3), 
@@ -477,6 +480,8 @@ Payback Period: ${reportData.financialAnalysis.paybackPeriod} years
 
     if (showIdealOutput) {
         footnotes.push("Values assume ideal conditions with no system losses. Actual output may vary.");
+    } else {
+        footnotes.push(`Production is derated by system efficiency (${systemEfficiency}%) and a real-world loss factor of ${( (1 - REAL_WORLD_LOSS_FACTOR) * 100 ).toFixed(0)}% (dust, weather).`);
     }
 
     if (footnotes.length > 0) {
@@ -506,7 +511,7 @@ Payback Period: ${reportData.financialAnalysis.paybackPeriod} years
       <Card title="Project Configuration">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
             <Input label="Project Name" value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="e.g. Villa Solar Project" />
-            <Input label="Location" value={location} onChange={(e) => setLocation(e.target.value)} />
+            <Input label="Location" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g., Dubai, UAE" />
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
               <Select value={city} onChange={(e) => setCity(e.target.value)}>
@@ -696,6 +701,22 @@ Payback Period: ${reportData.financialAnalysis.paybackPeriod} years
             <div className="p-4 rounded-lg text-white bg-brand-primary"><p className="text-sm opacity-90">Space Required</p><p className="text-2xl font-bold">{systemRecommendation.spaceRequired} m²</p></div>
             <div className="p-4 rounded-lg bg-brand-secondary"><p className="text-sm text-brand-primary">Annual Production</p><p className="text-2xl font-bold text-brand-primary">{systemRecommendation.annualProduction.toLocaleString()} kWh</p></div>
           </div>
+          
+          {!showIdealOutput && (
+            <div className="mb-4 mt-2 p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
+              <h4 className="font-semibold text-gray-800 mb-2">Realistic Production Estimate</h4>
+              <p>The 'Annual Production' is a realistic forecast. It has been derated from the ideal output to account for:</p>
+              <ul className="list-disc list-inside mt-2 space-y-1">
+                <li>
+                  <strong>System Efficiency:</strong> Based on component specifications (currently set at {systemEfficiency}%).
+                </li>
+                <li>
+                  <strong>Real-World Losses:</strong> An additional {( (1 - REAL_WORLD_LOSS_FACTOR) * 100 ).toFixed(0)}% reduction to account for factors like soiling (dust), weather, and minor shading.
+                </li>
+              </ul>
+            </div>
+          )}
+
           {unusedSolar > 0 && batteryMode !== 'night' && (
             <div className="text-sm text-amber-600 my-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-center">
               Estimated unused solar: <strong>{unusedSolar.toLocaleString()} kWh/year</strong>. 
