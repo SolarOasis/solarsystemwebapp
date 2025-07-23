@@ -45,7 +45,6 @@ interface FinancialAnalysis {
   roi25Year: number;
   netMeteringCredits: number;
   roiPercentage: number;
-  fuelSurchargeSavings: number;
 }
 
 // Constants
@@ -108,10 +107,9 @@ const CalculatorPage: React.FC = () => {
   const [systemCost, setSystemCost] = useState<string>('');
   const [degradationRate, setDegradationRate] = useState(0.007);
   const [escalationRate, setEscalationRate] = useState(0.02);
-  const [fuelSurchargeRate, setFuelSurchargeRate] = useState(0.06);
   
   // Calculated Values
-  const [financialAnalysis, setFinancialAnalysis] = useState<FinancialAnalysis>({ annualSavings: 0, paybackPeriod: 0, roi25Year: 0, netMeteringCredits: 0, roiPercentage: 0, fuelSurchargeSavings: 0 });
+  const [financialAnalysis, setFinancialAnalysis] = useState<FinancialAnalysis>({ annualSavings: 0, paybackPeriod: 0, roi25Year: 0, netMeteringCredits: 0, roiPercentage: 0 });
 
   const idealBatteryEfficiency = showIdealOutput ? 1 : batteryEfficiency;
   const idealUsableDoD = showIdealOutput ? 1 : usableDoD;
@@ -186,7 +184,7 @@ const CalculatorPage: React.FC = () => {
       }
     });
     return newBills;
-  }, [calculateBillAmount, bills, months]);
+  }, [calculateBillAmount, bills]);
 
   const addBills = useCallback(() => {
     const newBills = parseBillInput(billInput);
@@ -196,7 +194,7 @@ const CalculatorPage: React.FC = () => {
       ).sort((a,b) => months.indexOf(a.month) - months.indexOf(b.month)));
       setBillInput('');
     }
-  }, [billInput, parseBillInput, months]);
+  }, [billInput, parseBillInput]);
 
   const removeBill = (index: number) => setBills(bills.filter((_, i) => i !== index));
   
@@ -217,7 +215,7 @@ const CalculatorPage: React.FC = () => {
         return { month, consumption: estimatedConsumption, amount: calculateBillAmount(estimatedConsumption), isEstimated: true };
     });
     setPendingEstimates(estimatedBills);
-  }, [bills, calculateBillAmount, months]);
+  }, [bills, calculateBillAmount]);
   
   const seasonalAnalysis = useMemo<SeasonalAnalysis>(() => {
     if (bills.length > 0) {
@@ -244,9 +242,12 @@ const CalculatorPage: React.FC = () => {
   const systemMetrics = useMemo(() => {
     if (consumptionStats.avgDaily === 0) return { systemSize: 0, panelCount: 0, spaceRequired: 0, annualProduction: 0, actualSystemSize: 0 };
     
-    let targetConsumption = consumptionStats.avgDaily; 
+    let targetConsumption = consumptionStats.avgDaily; // Default to sizing for 100% (e.g., for DEWA)
 
+    // For FEWA projects, the sizing strategy depends on the battery mode
     if (authority === 'FEWA') {
+        // If the goal is 'night' backup, we MUST size for the full day's consumption.
+        // Otherwise (no battery OR just storing unused solar from a daytime system), we size ONLY for the daytime load.
         if (batteryEnabled && batteryMode === 'night') {
             targetConsumption = consumptionStats.avgDaily;
         } else {
@@ -351,82 +352,111 @@ const CalculatorPage: React.FC = () => {
 
   useEffect(() => {
     if (!systemCost || bills.length === 0 || systemRecommendation.annualProduction === 0) {
-      setFinancialAnalysis({ annualSavings: 0, paybackPeriod: 0, roi25Year: 0, netMeteringCredits: 0, roiPercentage: 0, fuelSurchargeSavings: 0 });
+      setFinancialAnalysis({ annualSavings: 0, paybackPeriod: 0, roi25Year: 0, netMeteringCredits: 0, roiPercentage: 0 });
       return;
     }
 
     const SYSTEM_LIFESPAN_YEARS = 25;
     const initialInvestment = parseFloat(systemCost);
     const maintenanceCostPerYear = initialInvestment * 0.01;
-    const avgMonthlyConsumption = bills.reduce((sum, bill) => sum + bill.consumption, 0) / bills.length;
-    const consumptionByMonth = months.reduce((acc, month) => {
-        acc[month] = bills.find(b => b.month === month)?.consumption || avgMonthlyConsumption;
-        return acc;
-    }, {} as {[key: string]: number});
+    
+    // --- START: Improved fallback for missing monthly consumption ---
+    let avgMonthlyConsumptionForRate;
+    const consumptionByMonth: { [key: string]: number } = {};
+    const seasonalFactors = CITY_SEASONAL_FACTORS[city] || UAE_SEASONAL_FACTORS;
 
-    let cumulativeCashFlow = -initialInvestment, paybackPeriodYears = 0, firstYearAnnualSavings = 0, netMeteringCreditsKwh = 0;
-    let firstYearFuelSurchargeSavings = 0;
+    if (bills.length > 0 && bills.length < 12) {
+      const totalProvidedConsumption = bills.reduce((sum, bill) => sum + bill.consumption, 0);
+      const totalProvidedFactor = bills.reduce((sum, bill) => sum + (seasonalFactors[bill.month] || 1), 0);
+      const baseConsumption = totalProvidedFactor > 0 ? totalProvidedConsumption / totalProvidedFactor : totalProvidedConsumption / bills.length;
+      
+      months.forEach(month => {
+        const userBill = bills.find(b => b.month === month);
+        consumptionByMonth[month] = userBill ? userBill.consumption : Math.round(baseConsumption * (seasonalFactors[month] || 1));
+      });
+    } else {
+      const avg = bills.reduce((sum, bill) => sum + bill.consumption, 0) / (bills.length || 1);
+      months.forEach(month => {
+        consumptionByMonth[month] = bills.find(b => b.month === month)?.consumption || avg;
+      });
+    }
+    avgMonthlyConsumptionForRate = Object.values(consumptionByMonth).reduce((sum, c) => sum + c, 0) / 12;
+    // --- END: Improved fallback logic ---
+
+    // --- START: Realistic DEWA net metering credit expiration ---
+    let cumulativeCashFlow = -initialInvestment, paybackPeriodYears = 0, firstYearAnnualSavings = 0;
+    const creditQueue: { year: number, monthIndex: number, kwh: number }[] = [];
 
     for (let year = 1; year <= SYSTEM_LIFESPAN_YEARS; year++) {
       let yearlySavings = 0;
-      let yearlyFuelSurchargeSavings = 0;
       const degradationFactor = Math.pow(1 - degradationRate, year - 1);
+      
+      months.forEach((monthName, monthIndex) => {
+          // Expire old credits before using them for the current month
+          const currentMonthAbsolute = (year - 1) * 12 + monthIndex;
+          for (let i = creditQueue.length - 1; i >= 0; i--) {
+              const credit = creditQueue[i];
+              const creditMonthAbsolute = (credit.year - 1) * 12 + credit.monthIndex;
+              if (currentMonthAbsolute - creditMonthAbsolute >= 12) {
+                  creditQueue.splice(i, 1); // Credit is 12 months old, expire it
+              }
+          }
 
-      for (const monthName of months) {
           const monthlyConsumption = consumptionByMonth[monthName];
           const monthlyProduction = (monthlyProductionMap[monthName] || 0) * degradationFactor;
           const originalBill = calculateBillAmountWithEscalation(monthlyConsumption, year, escalationRate);
           let newBill = 0;
-          let extraSavingsThisMonth = 0;
+          let monthlyServiceChargeSavings = 0;
 
           if (authority === 'DEWA') {
-              const selfConsumedKwh = Math.min(monthlyProduction, monthlyConsumption);
-              extraSavingsThisMonth = selfConsumedKwh * fuelSurchargeRate;
-              
               const netKwh = monthlyProduction - monthlyConsumption;
               if (netKwh >= 0) { 
-                  netMeteringCreditsKwh += netKwh; 
+                  creditQueue.push({ year, monthIndex, kwh: netKwh });
                   newBill = 0; 
               } else {
-                  const drawnFromCredits = Math.min(Math.abs(netKwh), netMeteringCreditsKwh);
-                  netMeteringCreditsKwh -= drawnFromCredits;
-                  newBill = calculateBillAmountWithEscalation(Math.abs(netKwh) - drawnFromCredits, year, escalationRate);
+                  let deficit = Math.abs(netKwh);
+                  for (const credit of creditQueue) { // FIFO usage
+                      if (deficit === 0) break;
+                      const drawAmount = Math.min(deficit, credit.kwh);
+                      credit.kwh -= drawAmount;
+                      deficit -= drawAmount;
+                  }
+                  // Clean up used-up credits
+                  for(let i = creditQueue.length - 1; i >= 0; i--) {
+                      if(creditQueue[i].kwh <= 0) {
+                          creditQueue.splice(i, 1);
+                      }
+                  }
+                  newBill = calculateBillAmountWithEscalation(deficit, year, escalationRate);
               }
           } else { // FEWA
               let savedKwh = 0;
               if (batteryEnabled) {
                   savedKwh = Math.min(monthlyProduction * idealBatteryEfficiency, monthlyConsumption);
-              } else {
+                  newBill = calculateBillAmountWithEscalation(monthlyConsumption - savedKwh, year, escalationRate);
+              } else { // FEWA no battery
                   const daytimeLoadKwh = monthlyConsumption * (daytimeConsumption / 100);
                   savedKwh = Math.min(monthlyProduction, daytimeLoadKwh);
+                  newBill = calculateBillAmountWithEscalation(monthlyConsumption - savedKwh, year, escalationRate);
               }
-              newBill = calculateBillAmountWithEscalation(monthlyConsumption - savedKwh, year, escalationRate);
-              extraSavingsThisMonth = savedKwh * FEWA_SERVICE_CHARGE_PER_KWH;
+              monthlyServiceChargeSavings = savedKwh * FEWA_SERVICE_CHARGE_PER_KWH;
           }
-          yearlySavings += (originalBill - newBill) + extraSavingsThisMonth;
-          if (authority === 'DEWA') {
-            yearlyFuelSurchargeSavings += extraSavingsThisMonth;
-          }
-      }
-      
-      if (year === 1) {
-          firstYearAnnualSavings = yearlySavings;
-          if (authority === 'DEWA') {
-            firstYearFuelSurchargeSavings = yearlyFuelSurchargeSavings;
-          }
-      }
-      
+          yearlySavings += (originalBill - newBill) + monthlyServiceChargeSavings;
+      });
+
+      if (year === 1) firstYearAnnualSavings = yearlySavings;
       const yearlyCashFlow = yearlySavings - maintenanceCostPerYear;
-      if (paybackPeriodYears === 0 && (cumulativeCashFlow + yearlyCashFlow) > 0) paybackPeriodYears = (year - 1) + (Math.abs(cumulativeCashFlow) / yearlyCashFlow);
+      if (paybackPeriodYears === 0 && (cumulativeCashFlow + yearlyCashFlow) > 0) {
+        paybackPeriodYears = (year - 1) + (yearlyCashFlow > 0 ? Math.abs(cumulativeCashFlow) / yearlyCashFlow : 0);
+      }
       cumulativeCashFlow += yearlyCashFlow;
     }
+    // --- END: Realistic credit logic ---
     
-    let netMeteringCreditsValue = 0;
-    if (authority === 'DEWA') {
-      netMeteringCreditsValue = calculateBillAmount(unusedSolar);
-    }
-    
-    const netProfit = Math.round(cumulativeCashFlow + initialInvestment);
+    const totalAnnualConsumption = Object.values(consumptionByMonth).reduce((sum, c) => sum + c, 0);
+    const excessProduction = Math.max(0, systemRecommendation.annualProduction - totalAnnualConsumption);
+    const netMeteringCreditsValue = excessProduction * getAverageRate(avgMonthlyConsumptionForRate);
+    const netProfit = Math.round(cumulativeCashFlow);
     const roiPercentage = initialInvestment > 0 ? (netProfit / initialInvestment) * 100 : 0;
     
     setFinancialAnalysis({ 
@@ -434,10 +464,9 @@ const CalculatorPage: React.FC = () => {
         paybackPeriod: paybackPeriodYears > 0 ? Math.round(paybackPeriodYears * 10) / 10 : 0, 
         roi25Year: netProfit, 
         netMeteringCredits: Math.round(netMeteringCreditsValue),
-        roiPercentage: Math.round(roiPercentage),
-        fuelSurchargeSavings: Math.round(firstYearFuelSurchargeSavings)
+        roiPercentage: Math.round(roiPercentage)
     });
-  }, [systemCost, bills, systemRecommendation.annualProduction, authority, batteryEnabled, daytimeConsumption, getAverageRate, calculateBillAmountWithEscalation, monthlyProductionMap, degradationRate, escalationRate, idealBatteryEfficiency, batteryMode, fuelSurchargeRate, unusedSolar, consumptionStats.avgMonthly, electricityRate, calculateBillAmount]);
+  }, [systemCost, bills, systemRecommendation.annualProduction, authority, batteryEnabled, daytimeConsumption, getAverageRate, calculateBillAmountWithEscalation, monthlyProductionMap, degradationRate, escalationRate, idealBatteryEfficiency, batteryMode, city]);
 
   const generateMonthlyData = () => months.map(month => ({ 
       month: month.substring(0, 3), 
@@ -557,6 +586,57 @@ Payback Period: ${reportData.financialAnalysis.paybackPeriod} years
             </div>
         </div>
       </Card>
+      
+      <div className="flex justify-start">
+        <Button variant="ghost">
+          <input
+            type="file"
+            accept=".json"
+            className="hidden"
+            id="import-project-input"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              const reader = new FileReader();
+              reader.onload = (event) => {
+                try {
+                  const data = JSON.parse(event.target?.result as string);
+                  // Load into state
+                  setProjectName(data.projectName || '');
+                  setLocation(data.location || '');
+                  setCity(data.city || 'Dubai');
+                  setAuthority(data.authority || 'DEWA');
+                  setBatteryEnabled(data.batteryEnabled || false);
+                  setBillInput('');
+                  setBills(data.bills || []);
+                  setRateStructure(data.rateStructure || 'flat');
+                  setElectricityRate(data.electricityRate || 0.38);
+                  setTiers(data.tiers || []);
+                  setDaytimeConsumption(data.daytimeConsumption || 60);
+                  setAvailableSpace(data.availableSpace || 100);
+                  setPeakSunHours(data.peakSunHours || 5.5);
+                  setSystemEfficiency(data.systemEfficiency || 85);
+                  setPanelWattage(data.panelWattage || 550);
+                  setSystemCost(data.systemCost || '');
+                  setDegradationRate(data.degradationRate || 0.007);
+                  setEscalationRate(data.escalationRate || 0.02);
+                  setBatteryEfficiency(data.batteryEfficiency || 0.95);
+                  setUsableDoD(data.usableDoD || 0.9);
+                  setInverterRatio(data.inverterRatio || 1.1);
+                  setBatteryMode(data.batteryMode || 'night');
+                  alert('Project imported successfully!');
+                } catch (err) {
+                  alert('Failed to import project. Please check the file format.');
+                }
+              };
+              reader.readAsText(file);
+            }}
+          />
+          <label htmlFor="import-project-input" className="cursor-pointer flex items-center">
+            <Upload className="w-5 h-5 mr-2" /> Import Project
+          </label>
+        </Button>
+      </div>
       
       <Card title="Electricity Bill Analysis">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -725,13 +805,13 @@ Payback Period: ${reportData.financialAnalysis.paybackPeriod} years
                   <strong>System Efficiency:</strong> Based on component specifications (currently set at {systemEfficiency}%).
                 </li>
                 <li>
-                  <strong>Real-World Losses:</strong> An additional {( (1 - REAL_WORLD_LOSS_FACTOR) * 100 ).toFixed(0)}% reduction to account for factors like soiling (dust), weather, and minor shading.
+                  <strong>Real-World Losses:</strong> An additional ${( (1 - REAL_WORLD_LOSS_FACTOR) * 100 ).toFixed(0)}% reduction to account for factors like soiling (dust), weather, and minor shading.
                 </li>
               </ul>
             </div>
           )}
 
-          {authority !== 'DEWA' && unusedSolar > 0 && (!batteryEnabled || batteryMode !== 'night') && (
+          {unusedSolar > 0 && (!batteryEnabled || batteryMode !== 'night') && (
             <div className="text-sm text-amber-600 my-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-center">
               Estimated unused solar: <strong>{unusedSolar.toLocaleString()} kWh/year</strong>. 
               <button
@@ -765,29 +845,14 @@ Payback Period: ${reportData.financialAnalysis.paybackPeriod} years
                 <div><p className="text-sm text-gray-600">Annual Average</p><div className="w-full bg-gray-200 rounded-full h-4 mt-1"><div className="h-4 rounded-full bg-green-500" style={{width: `${systemRecommendation.annualCoverage}%`}}></div></div><p className="text-sm font-semibold mt-1 text-green-600">{systemRecommendation.annualCoverage}%</p></div>
             </div>
           </div>
-           {authority === 'DEWA' && (
-            <div className="text-sm text-gray-500 mt-4 pt-4 border-t text-center">
-              Sized to offset ~100% of annual usage to maximize DEWA net metering benefits.
-            </div>
-          )}
           {systemRecommendation.spaceRequired > availableSpace && (<div className="bg-red-100 border border-red-300 rounded-lg p-4 flex items-center gap-2 text-sm mt-4"><AlertCircle className="w-5 h-5 text-red-600" /><p className="text-red-800">Warning: Required space ({systemRecommendation.spaceRequired} m²) exceeds available space ({availableSpace} m²).</p></div>)}
         </Card>
         <Card title="Financial & ROI Analysis">
-           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <Input label="System Cost (AED)" type="number" value={systemCost} onChange={(e) => setSystemCost(e.target.value)} placeholder="e.g. 25000" />
-              <Input label="Panel Degradation (% per year)" type="number" value={degradationRate * 100} onChange={(e) => setDegradationRate(parseFloat(e.target.value) / 100 || 0)} step="0.1" />
-              <Input label="Price Escalation (% per year)" type="number" value={escalationRate * 100} onChange={(e) => setEscalationRate(parseFloat(e.target.value) / 100 || 0)} step="0.1" />
-              {authority === 'DEWA' && (
-                  <Input 
-                      label="Fuel Surcharge (AED/kWh)" 
-                      type="number" 
-                      value={fuelSurchargeRate} 
-                      onChange={(e) => setFuelSurchargeRate(parseFloat(e.target.value) || 0)} 
-                      step="0.001"
-                      className="md:col-start-1"
-                  />
-              )}
-            </div>
+          <div className="mb-6"><Input label="System Cost (AED)" type="number" value={systemCost} onChange={(e) => setSystemCost(e.target.value)} className="max-w-xs" placeholder="e.g. 25000" /></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 max-w-2xl">
+            <Input label="Panel Degradation (% per year)" type="number" value={degradationRate * 100} onChange={(e) => setDegradationRate(parseFloat(e.target.value) / 100 || 0)} step="0.1" />
+            <Input label="Price Escalation (% per year)" type="number" value={escalationRate * 100} onChange={(e) => setEscalationRate(parseFloat(e.target.value) / 100 || 0)} step="0.1" />
+          </div>
 
           {systemCost && (<>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -808,22 +873,7 @@ Payback Period: ${reportData.financialAnalysis.paybackPeriod} years
               <div className="bg-amber-100 border border-amber-200 p-4 rounded-lg"><p className="text-sm text-gray-600">25-Year ROI</p><p className="text-2xl font-bold text-amber-700">{financialAnalysis.roiPercentage.toLocaleString()}%</p></div>
             </div>
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 flex items-start gap-3"><Info className="w-5 h-5 text-blue-600 mt-1 shrink-0"/><p className="text-sm text-blue-800"><strong>What is 25-Year Net Profit?</strong> This is your total estimated profit over 25 years after subtracting the system's initial cost and an estimated 1% annual maintenance fee. It accounts for panel degradation and grid electricity price increases.</p></div>
-            
-            {authority === 'DEWA' && (
-              <div className="space-y-2">
-                {financialAnalysis.netMeteringCredits > 0 && (
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-800">
-                      Includes an estimated <strong>AED {financialAnalysis.netMeteringCredits.toLocaleString()}</strong> in net metering credits.
-                  </div>
-                )}
-                {financialAnalysis.fuelSurchargeSavings > 0 && (
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-800">
-                      Includes an estimated <strong>AED {financialAnalysis.fuelSurchargeSavings.toLocaleString()}</strong> in saved fuel surcharges.
-                  </div>
-                )}
-              </div>
-            )}
-            
+            {authority === 'DEWA' && financialAnalysis.netMeteringCredits > 0 && (<div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6 text-sm"><p className="text-green-800">Your system is projected to generate <strong>AED {financialAnalysis.netMeteringCredits.toLocaleString()}</strong> in excess credits in the first year, which will roll over to offset future bills.</p></div>)}
             <div className="mt-6"><h3 className="text-lg font-semibold mb-3 text-brand-primary">Monthly Consumption vs. Production</h3><ResponsiveContainer width="100%" height={300}><BarChart data={generateMonthlyData()}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="month" /><YAxis /><Tooltip /><Legend /><Bar dataKey="consumption" fill="#f87171" name="Consumption (kWh)" /><Bar dataKey="production" fill="#34d399" name="Production (kWh)" /></BarChart></ResponsiveContainer></div>
           </>)}
         </Card>
@@ -831,54 +881,6 @@ Payback Period: ${reportData.financialAnalysis.paybackPeriod} years
           <div className="flex flex-col sm:flex-row gap-4">
             <Button onClick={copyReport} disabled={!systemCost || bills.length === 0}><FileText className="w-5 h-5 mr-2" /> Copy Report</Button>
             <Button onClick={saveProject} disabled={!systemCost || bills.length === 0} variant="secondary"><Download className="w-5 h-5 mr-2" /> Save Project</Button>
-             <Button variant="ghost">
-              <input
-                type="file"
-                accept=".json"
-                className="hidden"
-                id="import-project-input"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  const reader = new FileReader();
-                  reader.onload = (event) => {
-                    try {
-                      const data = JSON.parse(event.target?.result as string);
-                      // Load into state
-                      setProjectName(data.projectName || '');
-                      setLocation(data.location || '');
-                      setCity(data.city || 'Dubai');
-                      setAuthority(data.authority || 'DEWA');
-                      setBatteryEnabled(data.batteryEnabled || false);
-                      setBillInput('');
-                      setBills(data.bills || []);
-                      setRateStructure(data.rateStructure || 'flat');
-                      setElectricityRate(data.electricityRate || 0.38);
-                      setTiers(data.tiers || []);
-                      setDaytimeConsumption(data.daytimeConsumption || 60);
-                      setAvailableSpace(data.availableSpace || 100);
-                      setPeakSunHours(data.peakSunHours || 5.5);
-                      setSystemEfficiency(data.systemEfficiency || 85);
-                      setPanelWattage(data.panelWattage || 550);
-                      setSystemCost(data.systemCost || '');
-                      setDegradationRate(data.degradationRate || 0.007);
-                      setEscalationRate(data.escalationRate || 0.02);
-                      setBatteryEfficiency(data.batteryEfficiency || 0.95);
-                      setUsableDoD(data.usableDoD || 0.9);
-                      setInverterRatio(data.inverterRatio || 1.1);
-                      setBatteryMode(data.batteryMode || 'night');
-                      alert('Project imported successfully!');
-                    } catch (err) {
-                      alert('Failed to import project. Please check the file format.');
-                    }
-                  };
-                  reader.readAsText(file);
-                }}
-              />
-              <label htmlFor="import-project-input" className="cursor-pointer flex items-center">
-                <Upload className="w-5 h-5 mr-2" /> Import Project
-              </label>
-            </Button>
           </div>
         </Card>
         </>
