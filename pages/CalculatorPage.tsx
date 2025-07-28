@@ -444,11 +444,30 @@ const RecommendedSystemCard = ({ systemRecommendation, availableSpace, authority
         
         {batteryEnabled && authority === 'EtihadWE' && (<div className="text-center mb-6"><p className="text-sm text-gray-600">Recommended Battery Capacity</p><p className="text-xl font-semibold text-brand-primary">{systemRecommendation.batteryCapacity} kWh</p></div>)}
 
-        <div className="mb-6"><h3 className="text-lg font-semibold mb-3 text-brand-primary">Seasonal Coverage Analysis</h3>
+        <div className="mb-6">
+            <h3 className="text-lg font-semibold mb-3 text-brand-primary">Seasonal Coverage Analysis</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div><p className="text-sm text-gray-600">Summer Coverage</p><div className="w-full bg-gray-200 rounded-full h-4 mt-1"><div className="h-4 rounded-full bg-brand-secondary" style={{width: `${systemRecommendation.summerCoverage}%`}}></div></div><p className="text-sm font-semibold mt-1 text-brand-primary">{systemRecommendation.summerCoverage}%</p></div>
-                <div><p className="text-sm text-gray-600">Winter Coverage</p><div className="w-full bg-gray-200 rounded-full h-4 mt-1"><div className="h-4 rounded-full bg-brand-primary" style={{width: `${systemRecommendation.winterCoverage}%`}}></div></div><p className="text-sm font-semibold mt-1 text-brand-primary">{systemRecommendation.winterCoverage}%</p></div>
-                <div><p className="text-sm text-gray-600">Annual Average</p<div className="w-full bg-gray-200 rounded-full h-4 mt-1"><div className="h-4 rounded-full bg-green-500" style={{width: `${systemRecommendation.annualCoverage}%`}}></div></div><p className="text-sm font-semibold mt-1 text-green-600">{systemRecommendation.annualCoverage}%</p></div>
+                <div>
+                    <p className="text-sm text-gray-600">Summer Coverage</p>
+                    <div className="w-full bg-gray-200 rounded-full h-4 mt-1">
+                        <div className="h-4 rounded-full bg-brand-secondary" style={{width: `${systemRecommendation.summerCoverage}%`}}></div>
+                    </div>
+                    <p className="text-sm font-semibold mt-1 text-brand-primary">{systemRecommendation.summerCoverage}%</p>
+                </div>
+                <div>
+                    <p className="text-sm text-gray-600">Winter Coverage</p>
+                    <div className="w-full bg-gray-200 rounded-full h-4 mt-1">
+                        <div className="h-4 rounded-full bg-brand-primary" style={{width: `${systemRecommendation.winterCoverage}%`}}></div>
+                    </div>
+                    <p className="text-sm font-semibold mt-1 text-brand-primary">{systemRecommendation.winterCoverage}%</p>
+                </div>
+                <div>
+                    <p className="text-sm text-gray-600">Annual Average</p>
+                    <div className="w-full bg-gray-200 rounded-full h-4 mt-1">
+                        <div className="h-4 rounded-full bg-green-500" style={{width: `${systemRecommendation.annualCoverage}%`}}></div>
+                    </div>
+                    <p className="text-sm font-semibold mt-1 text-green-600">{systemRecommendation.annualCoverage}%</p>
+                </div>
             </div>
         </div>
         {systemRecommendation.spaceRequired > availableSpace && (<div className="bg-red-100 border border-red-300 rounded-lg p-4 flex items-center gap-2 text-sm mt-4"><AlertCircle className="w-5 h-5 text-red-600" /><p className="text-red-800">Warning: Required space ({systemRecommendation.spaceRequired} m²) exceeds available space ({availableSpace} m²).</p></div>)}
@@ -587,19 +606,37 @@ const CalculatorPage: React.FC = () => {
     setCity(data.city || 'Dubai');
     setAuthority(auth);
     setBatteryEnabled(data.batteryEnabled ?? false);
-    setBills(data.bills || []);
+    
+    const loadedBills: Bill[] = (data.bills as any[] || []).map((b: any) => ({
+      month: String(b.month || ''),
+      consumption: Number(b.consumption || 0),
+      amount: b.amount != null ? Number(b.amount) : 0,
+      isEstimated: b.isEstimated === true,
+    }));
+    setBills(loadedBills);
+    
     setTiers(data.tiers || [ { from: 1, to: 2000, rate: 0.23 }, { from: 2001, to: 4000, rate: 0.28 }, { from: 4001, to: 6000, rate: 0.32 }, { from: 6001, to: Infinity, rate: 0.38 } ]);
-    setFuelSurcharge(data.fuelSurcharge ?? (auth === 'DEWA' ? 0.06 : 0.05));
+    setFuelSurcharge(data.fuelSurcharge != null ? Number(data.fuelSurcharge) : (auth === 'DEWA' ? 0.06 : 0.05));
     setSystemParams(prev => ({ ...prev, 
-        daytimeConsumption: data.daytimeConsumption || 55, availableSpace: data.availableSpace || 100, peakSunHours: data.peakSunHours || 5.5,
-        systemEfficiency: data.systemEfficiency || 95, panelWattage: data.panelWattage || 610, panelOrientation: data.panelOrientation || 'portrait',
-        batteryEfficiency: data.batteryEfficiency || 90, usableDoD: data.usableDoD || 100, inverterRatio: data.inverterRatio || (auth === 'DEWA' ? 1.0 : 1.05),
+        daytimeConsumption: data.daytimeConsumption != null ? Number(data.daytimeConsumption) : 55, 
+        availableSpace: data.availableSpace != null ? Number(data.availableSpace) : 100, 
+        peakSunHours: data.peakSunHours != null ? Number(data.peakSunHours) : 5.5,
+        systemEfficiency: data.systemEfficiency != null ? Number(data.systemEfficiency) : 95, 
+        panelWattage: data.panelWattage != null ? Number(data.panelWattage) : 610, 
+        panelOrientation: data.panelOrientation || 'portrait',
+        batteryEfficiency: data.batteryEfficiency != null ? Number(data.batteryEfficiency) : 90, 
+        usableDoD: data.usableDoD != null ? Number(data.usableDoD) : 100, 
+        inverterRatio: data.inverterRatio != null ? Number(data.inverterRatio) : (auth === 'DEWA' ? 1.0 : 1.05),
         isBifacialEnabled: data.isBifacialEnabled ?? true,
     }));
     setBatteryMode(data.batteryMode || 'night');
     setRoiParams(prev => ({ ...prev, 
-        systemCost: data.systemCost || '', firstYearDegradation: data.firstYearDegradation || 2.0, degradationRate: data.degradationRate || 0.5,
-        escalationRate: data.escalationRate || 1.5, escalateFuelSurcharge: data.escalateFuelSurcharge ?? false, creditExpiryMonths: data.creditExpiryMonths || 12,
+        systemCost: data.systemCost != null ? String(data.systemCost) : '', 
+        firstYearDegradation: data.firstYearDegradation != null ? Number(data.firstYearDegradation) : 2.0, 
+        degradationRate: data.degradationRate != null ? Number(data.degradationRate) : 0.5,
+        escalationRate: data.escalationRate != null ? Number(data.escalationRate) : 1.5, 
+        escalateFuelSurcharge: data.escalateFuelSurcharge ?? false, 
+        creditExpiryMonths: data.creditExpiryMonths != null ? Number(data.creditExpiryMonths) : 12,
     }));
   }, []);
   
@@ -619,222 +656,342 @@ const CalculatorPage: React.FC = () => {
     setFuelSurcharge(authority === 'DEWA' ? 0.06 : 0.05);
   }, [authority]);
 
-  const calculateBillAmount = useCallback((consumption: number) => calculateBillAmountForConsumption(consumption, tiers, fuelSurcharge), [tiers, fuelSurcharge]);
-  const getAverageRate = useCallback((consumption: number) => consumption <= 0 ? tiers[0]?.rate || 0 : calculateBillAmountForConsumption(consumption, tiers, 0) / consumption, [tiers]);
-
-  const handleEstimateFromPartialData = useCallback(() => {
-    if (bills.length === 0 || bills.length >= 12) return;
-    const cityFactors = CITY_SEASONAL_FACTORS[city] || CITY_SEASONAL_FACTORS['Dubai'];
-    const totalBaseConsumption = bills.reduce((sum: number, bill) => sum + (bill.consumption / cityFactors[bill.month]), 0);
-    const normalizedAvgConsumption = totalBaseConsumption / bills.length;
-    const userProvidedMonths = new Set(bills.map(b => b.month));
-    const estimatedBills = months.filter(month => !userProvidedMonths.has(month)).map(month => {
-        const estimatedConsumption = Math.round(normalizedAvgConsumption * cityFactors[month]);
-        return { month, consumption: estimatedConsumption, amount: calculateBillAmount(estimatedConsumption), isEstimated: true };
-    });
-    setPendingEstimates(estimatedBills);
-  }, [bills, calculateBillAmount, city]);
-  
-  const seasonalAnalysis = useMemo(() => {
-    if (bills.length === 0) return { summerAvg: 0, winterAvg: 0, spikePercentage: 0, baseLoad: 0, coolingLoad: 0 };
-    const summerMonths = ['May', 'June', 'July', 'August', 'September'];
-    const winterMonths = months.filter(m => !summerMonths.includes(m));
-    const summerBills = bills.filter(bill => summerMonths.includes(bill.month));
-    const winterBills = bills.filter(bill => winterMonths.includes(bill.month));
-    const summerAvg = summerBills.length > 0 ? summerBills.reduce((sum, bill) => sum + bill.consumption, 0) / summerBills.length : 0;
-    const winterAvg = winterBills.length > 0 ? winterBills.reduce((sum, bill) => sum + bill.consumption, 0) / winterBills.length : 0;
-    const spikePercentage = winterAvg > 0 ? ((summerAvg - winterAvg) / winterAvg) * 100 : 0;
-    return { summerAvg: Math.round(summerAvg), winterAvg: Math.round(winterAvg), spikePercentage: Math.round(spikePercentage), baseLoad: Math.round(winterAvg), coolingLoad: Math.round(summerAvg - winterAvg) };
+  const fullYearConsumptionStats = useMemo(() => {
+    const totalConsumption = bills.reduce((acc, b) => acc + b.consumption, 0);
+    const avgMonthly = bills.length > 0 ? totalConsumption / bills.length : 0;
+    return {
+      totalAnnual: avgMonthly * 12,
+      avgMonthly: avgMonthly,
+      dailyAvg: avgMonthly * 12 / 365,
+    };
   }, [bills]);
 
-  const fullYearConsumptionStats = useMemo(() => {
-    if (bills.length === 0) return { totalAnnual: 0, avgMonthly: 0, dailyAvg: 0 };
-    const consumptionByMonth = months.reduce((acc, month) => {
-        const bill = bills.find(b => b.month === month);
-        if (bill) {
-            acc[month] = bill.consumption;
-        }
-        return acc;
-    }, {} as Record<string, number>);
+  const seasonalAnalysis = useMemo(() => {
+    const summerMonths = ['May', 'June', 'July', 'August', 'September'];
+    const winterMonths = ['November', 'December', 'January', 'February'];
+    const summerBills = bills.filter(b => summerMonths.includes(b.month));
+    const winterBills = bills.filter(b => winterMonths.includes(b.month));
+    const summerAvg = summerBills.length > 0 ? summerBills.reduce((acc, b) => acc + b.consumption, 0) / summerBills.length : 0;
+    const winterAvg = winterBills.length > 0 ? winterBills.reduce((acc, b) => acc + b.consumption, 0) / winterBills.length : 0;
+    const baseLoad = winterAvg > 0 ? winterAvg : 0;
+    const coolingLoad = summerAvg > baseLoad ? summerAvg - baseLoad : 0;
+    const spikePercentage = baseLoad > 0 ? (coolingLoad / baseLoad) * 100 : 0;
+    return { summerAvg, winterAvg, spikePercentage, baseLoad, coolingLoad };
+  }, [bills]);
+  
+  const getAverageRate = useCallback((consumption: number) => {
+    const billAmount = calculateBillAmountForConsumption(consumption, tiers, fuelSurcharge);
+    return consumption > 0 ? billAmount / consumption : 0;
+  }, [tiers, fuelSurcharge]);
+  
+  const handleEstimateFromPartialData = useCallback(() => {
+    if (bills.length === 0 || bills.length >= 12) return;
+    const avgConsumption = bills.reduce((sum, b) => sum + b.consumption, 0) / bills.length;
+    const avgSeasonalFactor = bills.reduce((sum, b) => sum + (CITY_SEASONAL_FACTORS[city]?.[b.month] || 1), 0) / bills.length;
+    const baseAnnualEstimate = (avgConsumption / avgSeasonalFactor) * 12;
     
-    if (Object.keys(consumptionByMonth).length < 12) {
-        const cityFactors = CITY_SEASONAL_FACTORS[city] || CITY_SEASONAL_FACTORS['Dubai'];
-        const providedBills = bills.filter(b => consumptionByMonth[b.month]);
-        const totalProvidedConsumption = providedBills.reduce((sum: number, bill) => sum + bill.consumption, 0);
-        const totalProvidedFactor = providedBills.reduce((sum: number, bill) => sum + (cityFactors[bill.month] || 1), 0);
-        const baseConsumption = totalProvidedFactor > 0 ? totalProvidedConsumption / totalProvidedFactor : 0;
-        months.forEach(month => {
-            if (!consumptionByMonth[month]) consumptionByMonth[month] = Math.round(baseConsumption * (cityFactors[month] || 1));
-        });
-    }
-    const totalAnnual = Object.values(consumptionByMonth).reduce((sum: number, c: number) => sum + c, 0);
-    return { totalAnnual, avgMonthly: totalAnnual / 12, dailyAvg: totalAnnual / 365 };
-  }, [bills, city]);
+    const estimates: Bill[] = months
+      .filter(m => !bills.some(b => b.month === m))
+      .map(month => {
+        const consumption = Math.round((baseAnnualEstimate / 12) * (CITY_SEASONAL_FACTORS[city]?.[month] || 1));
+        return { month, consumption, amount: calculateBillAmountForConsumption(consumption, tiers, fuelSurcharge), isEstimated: true };
+      });
 
-  const systemMetrics = useMemo(() => {
-    if (fullYearConsumptionStats.totalAnnual === 0) return { systemSize: 0, panelCount: 0, spaceRequired: 0, annualProduction: 0, actualSystemSize: 0, sizingStrategy: '' };
-    let targetConsumption = fullYearConsumptionStats.dailyAvg;
-    let sizingStrategy = '';
-
-    if (authority === 'EtihadWE' && !batteryEnabled) {
-      targetConsumption *= (daytimeConsumption / 100);
-      sizingStrategy = `Sizing based on offsetting daytime consumption (~${daytimeConsumption}%) for EtihadWE.`
-    } else if (authority === 'DEWA') {
-      sizingStrategy = 'Sizing based on 100% annual consumption due to DEWA net-metering.';
-    } else {
-      sizingStrategy = 'Sizing based on 100% annual consumption for EtihadWE with battery.';
-    }
-
-    const effectiveProductionFactor = (showIdealOutput ? 1 : REAL_WORLD_LOSS_FACTOR) * (showIdealOutput ? 1 : systemEfficiency / 100) * (isBifacialEnabled ? BIFACIAL_BOOST_FACTOR : 1);
-    const requiredSystemSize = (targetConsumption / peakSunHours) / effectiveProductionFactor;
-    const panelCount = Math.ceil((requiredSystemSize * 1000) / panelWattage);
-    const actualSystemSize = (panelCount * panelWattage) / 1000;
-    const spacePerPanel = panelOrientation === 'portrait' ? SPACE_PER_PANEL_PORTRAIT : SPACE_PER_PANEL_LANDSCAPE;
-    const spaceRequired = panelCount * spacePerPanel;
-    const annualProduction = actualSystemSize * peakSunHours * 365 * effectiveProductionFactor;
-    return { systemSize: Math.round(actualSystemSize * 10) / 10, panelCount, spaceRequired: Math.round(spaceRequired), annualProduction: Math.round(annualProduction), actualSystemSize, sizingStrategy };
-  }, [fullYearConsumptionStats.totalAnnual, fullYearConsumptionStats.dailyAvg, authority, batteryEnabled, daytimeConsumption, peakSunHours, systemEfficiency, panelWattage, showIdealOutput, isBifacialEnabled, panelOrientation]);
-
-  const monthlyProductionMap = useMemo(() => {
-    const { annualProduction } = systemMetrics;
-    if (annualProduction === 0) return months.reduce((acc, month) => ({ ...acc, [month]: 0 }), {});
-    const seasonalFactors = CITY_SEASONAL_FACTORS[city];
-    const totalFactor = months.reduce((sum, m) => sum + seasonalFactors[m], 0);
-    return months.reduce((acc, month) => ({...acc, [month]: (annualProduction * (seasonalFactors[month] / totalFactor))}), {} as { [key: string]: number });
-  }, [systemMetrics.annualProduction, city]);
+    setPendingEstimates(estimates);
+  }, [bills, city, tiers, fuelSurcharge]);
 
   const systemRecommendation = useMemo(() => {
-    const { actualSystemSize, annualProduction } = systemMetrics;
-    const { totalAnnual, avgMonthly, dailyAvg } = fullYearConsumptionStats;
-    const inverterCapacity = Math.ceil(actualSystemSize * inverterRatio * 10) / 10;
-    const idealBatteryEfficiency = showIdealOutput ? 1 : (batteryEfficiency / 100);
-    const idealUsableDoD = showIdealOutput ? 1 : (usableDoD / 100);
-    let batteryCapacity = 0, unusedSolar = 0;
-
-    if (systemMetrics.annualProduction > 0 && totalAnnual > 0) {
-        let totalSelfConsumed = months.reduce((acc: number, month) => {
-            const monthlyProd = monthlyProductionMap[month] || 0;
-            const monthlyCons = (bills.find(b => b.month === month)?.consumption || avgMonthly);
-            return acc + (authority === 'EtihadWE' ? Math.min(monthlyProd, monthlyCons * (daytimeConsumption / 100)) : Math.min(monthlyProd, monthlyCons));
-        }, 0);
-        unusedSolar = Math.round(systemMetrics.annualProduction - totalSelfConsumed);
-    }
+    const annualConsumption = fullYearConsumptionStats.totalAnnual;
+    const avgMonthlyConsumption = fullYearConsumptionStats.avgMonthly;
+    const lossFactor = showIdealOutput ? 1 : (systemEfficiency / 100) * REAL_WORLD_LOSS_FACTOR;
+    const bifacialFactor = isBifacialEnabled ? BIFACIAL_BOOST_FACTOR : 1;
+    const finalEfficiencyFactor = lossFactor * bifacialFactor;
     
-    if (authority === 'EtihadWE' && batteryEnabled) {
-        if (batteryMode === 'night') batteryCapacity = Math.ceil((dailyAvg * (1 - daytimeConsumption / 100)) / (idealBatteryEfficiency * idealUsableDoD));
-        else if (batteryMode === 'unused') batteryCapacity = Math.ceil((unusedSolar / 365) / (idealBatteryEfficiency * idealUsableDoD));
+    // Sizing logic
+    let sizingStrategy = '';
+    let idealSystemSize = 0;
+    if (authority === 'DEWA') {
+        idealSystemSize = (annualConsumption / (peakSunHours * 365)) / finalEfficiencyFactor;
+        sizingStrategy = `Sized for 100% of annual consumption (${annualConsumption.toLocaleString(undefined, { maximumFractionDigits: 0})} kWh) due to DEWA's net-metering policy.`;
+    } else { // EtihadWE
+        const targetConsumption = avgMonthlyConsumption * (daytimeConsumption / 100) * 12;
+        idealSystemSize = (targetConsumption / (peakSunHours * 365)) / finalEfficiencyFactor;
+        sizingStrategy = `Sized to cover ${daytimeConsumption}% of daytime consumption, as per EtihadWE's policy without net-metering.`;
     }
 
-    const summerMonths = ['May', 'June', 'July', 'August', 'September'];
-    const summerProductionAvg = summerMonths.reduce((sum, m) => sum + (monthlyProductionMap[m] || 0), 0) / summerMonths.length;
-    const winterProductionAvg = months.filter(m => !summerMonths.includes(m)).reduce((sum, m) => sum + (monthlyProductionMap[m] || 0), 0) / (12 - summerMonths.length);
-    const summerCoverage = seasonalAnalysis.summerAvg > 0 ? (summerProductionAvg / seasonalAnalysis.summerAvg) * 100 : 100;
-    const winterCoverage = seasonalAnalysis.winterAvg > 0 ? (winterProductionAvg / seasonalAnalysis.winterAvg) * 100 : 100;
+    const spacePerPanel = panelOrientation === 'portrait' ? SPACE_PER_PANEL_PORTRAIT : SPACE_PER_PANEL_LANDSCAPE;
+    const maxSizeBySpace = systemParams.availableSpace > 0 ? (systemParams.availableSpace / spacePerPanel) * (panelWattage / 1000) : Infinity;
+    const systemSize = Math.min(idealSystemSize, maxSizeBySpace);
+
+    const panelCount = Math.ceil(systemSize / (panelWattage / 1000));
+    const actualSystemSize = panelCount * (panelWattage / 1000);
+    const spaceRequired = panelCount * spacePerPanel;
+    const annualProduction = actualSystemSize * peakSunHours * 365 * finalEfficiencyFactor;
+    const inverterCapacity = actualSystemSize * Number(inverterRatio);
     
-    return { ...systemMetrics, inverterCapacity, batteryCapacity, unusedSolar,
-        summerCoverage: Math.min(Math.round(summerCoverage), 100), winterCoverage: Math.min(Math.round(winterCoverage), 100),
-        annualCoverage: totalAnnual > 0 ? Math.min(Math.round((annualProduction / totalAnnual) * 100), 100) : 100,
-        dailyAvgConsumption: Math.round(dailyAvg),
-        idealBatteryEfficiency, idealUsableDoD
-    };
-  }, [systemMetrics, fullYearConsumptionStats, seasonalAnalysis, authority, batteryEnabled, batteryMode, daytimeConsumption, inverterRatio, showIdealOutput, batteryEfficiency, usableDoD, monthlyProductionMap, bills]);
+    const monthlyProdMap: { [key: string]: number } = {};
+    months.forEach(month => { monthlyProdMap[month] = (annualProduction / 12) * (CITY_SEASONAL_FACTORS[city]?.[month] || 1); });
 
-  const financialAnalysis = useMemo<FinancialAnalysis>(() => {
-    const parsedSystemCost = parseFloat(String(roiParams.systemCost));
-    if (isNaN(parsedSystemCost) || parsedSystemCost <= 0 || bills.length === 0 || systemRecommendation.annualProduction === 0) {
-        return { annualSavings: 0, monthlySavings: 0, paybackPeriod: 0, roi25YearNetProfit: 0, roi25YearNetValue: 0, roiPercentage: 0, netMeteringCreditsValue: 0, billOffsetPercentage: 0, netMeteringSavedKwh: 0, netMeteringSavedAed: 0, netMeteringCreditKwh: 0, yearlyBreakdown: [] };
+    const summerAvgConsumption = seasonalAnalysis.summerAvg;
+    const winterAvgConsumption = seasonalAnalysis.winterAvg;
+    const summerAvgProduction = ['May','June','July','August','September'].reduce((acc, m) => acc + monthlyProdMap[m], 0) / 5;
+    const winterAvgProduction = ['November','December','January','February'].reduce((acc, m) => acc + monthlyProdMap[m], 0) / 4;
+    
+    const annualCoverage = annualConsumption > 0 ? Math.min(100, (annualProduction / annualConsumption) * 100) : 0;
+    const summerCoverage = summerAvgConsumption > 0 ? Math.min(100, (summerAvgProduction / summerAvgConsumption) * 100) : 0;
+    const winterCoverage = winterAvgConsumption > 0 ? Math.min(100, (winterAvgProduction / winterAvgConsumption) * 100) : 0;
+    
+    const idealBatteryEfficiency = batteryEfficiency / 100;
+    const idealUsableDoD = usableDoD / 100;
+    
+    let batteryCapacity = 0;
+    let unusedSolar = 0;
+    if (authority === 'EtihadWE') {
+        const avgDailyNightConsumption = (avgMonthlyConsumption - (avgMonthlyConsumption * (daytimeConsumption / 100))) / 30.4;
+        const avgDailyProduction = annualProduction / 365;
+        const avgDailyDaytimeConsumption = (avgMonthlyConsumption * (daytimeConsumption / 100)) / 30.4;
+        const excessDailySolar = Math.max(0, avgDailyProduction - avgDailyDaytimeConsumption);
+        unusedSolar = excessDailySolar * 365;
+
+        if (batteryEnabled) {
+            batteryCapacity = batteryMode === 'night' ? (avgDailyNightConsumption / idealBatteryEfficiency) / idealUsableDoD : (excessDailySolar / idealUsableDoD);
+        }
     }
-    const roiParamsForCalc = {
-      ...roiParams,
-      firstYearDegradation: roiParams.firstYearDegradation / 100,
-      degradationRate: roiParams.degradationRate / 100,
-      escalationRate: roiParams.escalationRate / 100,
-    };
-    return calculateFinancialAnalysis({
-        systemCost: parsedSystemCost, bills, authority, batteryEnabled, batteryMode, daytimeConsumption, monthlyProductionMap,
-        systemRecommendation, roiParams: roiParamsForCalc, tiers, fuelSurcharge, fullYearConsumptionStats, getAverageRate
-    });
-  }, [roiParams.systemCost, bills, authority, batteryEnabled, batteryMode, daytimeConsumption, monthlyProductionMap, systemRecommendation, roiParams, tiers, fuelSurcharge, fullYearConsumptionStats, getAverageRate]);
 
-  const environmentalAnalysis = useMemo(() => {
-    const annualProduction = systemRecommendation.annualProduction;
-    const annualCo2SavingsKg = annualProduction * CO2_EMISSIONS_FACTOR_KG_PER_KWH;
     return {
-      lifetimeCo2SavingsKg: annualCo2SavingsKg * 25,
-      lifetimeTreesPlanted: (annualCo2SavingsKg / 21.77) * 25,
-      lifetimeCarsOffRoad: Math.ceil((annualCo2SavingsKg * 25) / 4600),
+        systemSize: parseFloat(actualSystemSize.toFixed(2)),
+        panelCount,
+        spaceRequired: Math.round(spaceRequired),
+        annualProduction: Math.round(annualProduction),
+        inverterCapacity: parseFloat(inverterCapacity.toFixed(2)),
+        annualCoverage: Math.round(annualCoverage),
+        summerCoverage: Math.round(summerCoverage),
+        winterCoverage: Math.round(winterCoverage),
+        unusedSolar: Math.round(unusedSolar),
+        batteryCapacity: parseFloat(batteryCapacity.toFixed(1)),
+        idealBatteryEfficiency,
+        idealUsableDoD,
+        sizingStrategy
     };
-  }, [systemRecommendation.annualProduction]);
+  }, [fullYearConsumptionStats, systemParams, authority, city, seasonalAnalysis, batteryEnabled, batteryMode]);
 
-  const copyReport = () => {
-    const totalAnnual = fullYearConsumptionStats.totalAnnual;
-    let summary = `SOLAR OASIS - PROJECT REPORT\n============================\nProject: ${projectName || 'N/A'}\nAuthority: ${authority}\nDate: ${new Date().toLocaleDateString()}\n\nCONSUMPTION ANALYSIS\n--------------------\nAnnual Consumption: ${Number(totalAnnual).toLocaleString(undefined, {maximumFractionDigits:0})} kWh\nAvg Monthly Bill: AED ${Number(calculateBillAmount(fullYearConsumptionStats.avgMonthly)).toLocaleString(undefined, {maximumFractionDigits:0})}\n\nRECOMMENDED SYSTEM\n------------------\nSystem Size: ${systemRecommendation.systemSize} kWp\nAnnual Production: ${Number(systemRecommendation.annualProduction).toLocaleString()} kWh\nBill Offset: ${financialAnalysis.billOffsetPercentage}%${batteryEnabled ? `\nBattery Capacity: ${systemRecommendation.batteryCapacity} kWh` : ''}\n\nFINANCIAL ANALYSIS\n------------------\nSystem Cost: AED ${parseFloat(String(roiParams.systemCost)).toLocaleString()}\nFirst-Year Savings: AED ${Number(financialAnalysis.annualSavings).toLocaleString()}\nPayback Period: ${financialAnalysis.paybackPeriod} years\n25-Year Net Profit: AED ${Number(financialAnalysis.roi25YearNetProfit).toLocaleString()}\nROI: ${financialAnalysis.roiPercentage}%\n${authority === 'DEWA' ? `Net-Metering Savings (Y1): ${Number(financialAnalysis.netMeteringSavedKwh).toLocaleString()} kWh (AED ${Number(financialAnalysis.netMeteringSavedAed).toLocaleString()})\nRollover Credits (End of Y1): ${Number(financialAnalysis.netMeteringCreditKwh).toLocaleString()} kWh (AED ${Number(financialAnalysis.netMeteringCreditsValue).toLocaleString()})` : ''}\n\nENVIRONMENTAL IMPACT\n--------------------\n25-Year CO₂ Savings: ${(Number(environmentalAnalysis.lifetimeCo2SavingsKg) / 1000).toLocaleString(undefined, {maximumFractionDigits:1})} Tonnes\nEquivalent to taking ${Number(environmentalAnalysis.lifetimeCarsOffRoad).toLocaleString()} cars off the road.`;
-    navigator.clipboard.writeText(summary).then(() => alert('Report copied to clipboard!'));
-  };
+  const monthlyProductionMap = useMemo(() => {
+    const { annualProduction } = systemRecommendation;
+    const productionMap: { [key: string]: number } = {};
+    months.forEach(month => {
+      productionMap[month] = (annualProduction / 12) * (CITY_SEASONAL_FACTORS[city]?.[month] || 1);
+    });
+    return productionMap;
+  }, [systemRecommendation, city]);
 
+  const financialAnalysis = useMemo(() => {
+    if (!bills.length || !roiParams.systemCost) {
+      return { annualSavings: 0, monthlySavings: 0, paybackPeriod: 0, roi25YearNetProfit: 0, roi25YearNetValue: 0, roiPercentage: 0, billOffsetPercentage: 0, netMeteringSavedKwh: 0, netMeteringSavedAed: 0, netMeteringCreditKwh: 0, netMeteringCreditsValue: 0, yearlyBreakdown: [] };
+    }
+    return calculateFinancialAnalysis({
+        systemCost: parseFloat(roiParams.systemCost),
+        bills, authority, batteryEnabled, daytimeConsumption,
+        monthlyProductionMap, systemRecommendation, roiParams: {
+            ...roiParams, 
+            firstYearDegradation: roiParams.firstYearDegradation / 100, 
+            degradationRate: roiParams.degradationRate / 100,
+            escalationRate: roiParams.escalationRate / 100,
+        }, tiers, fuelSurcharge,
+        fullYearConsumptionStats, getAverageRate, batteryMode
+    });
+  }, [roiParams, bills, authority, batteryEnabled, daytimeConsumption, monthlyProductionMap, systemRecommendation, tiers, fuelSurcharge, fullYearConsumptionStats, getAverageRate, batteryMode]);
+  
+  const environmentalAnalysis = useMemo(() => {
+    const annualCo2SavingsKg = systemRecommendation.annualProduction * CO2_EMISSIONS_FACTOR_KG_PER_KWH * (1 - (roiParams.firstYearDegradation / 100));
+    const lifetimeCo2SavingsKg = Array.from({ length: 25 }).reduce((acc, _, i) => acc + (annualCo2SavingsKg * Math.pow(1 - (roiParams.degradationRate / 100), i)), 0);
+    const lifetimeTreesPlanted = lifetimeCo2SavingsKg / 22; // Avg tree absorbs 22kg CO2/year
+    const lifetimeCarsOffRoad = lifetimeCo2SavingsKg / 4600; // Avg car emits 4600kg CO2/year
+    return {
+        lifetimeCo2SavingsKg,
+        lifetimeTreesPlanted: Math.round(lifetimeTreesPlanted),
+        lifetimeCarsOffRoad: parseFloat(lifetimeCarsOffRoad.toFixed(1))
+    };
+  }, [systemRecommendation.annualProduction, roiParams.firstYearDegradation, roiParams.degradationRate]);
+  
   const fullCalculationBreakdown = useMemo(() => {
-      let text = `FULL CALCULATION BREAKDOWN\n============================\n`;
-      if (!roiParams.systemCost || bills.length === 0) return text + "Please enter bills and system cost to see the full breakdown.";
-      text += `[SYSTEM SIZING & PRODUCTION]\n- Final Annual Production = ${systemRecommendation.annualProduction.toFixed(0)} kWh\n- Sizing Strategy: ${systemMetrics.sizingStrategy}\n\n`;
-      text += `[FINANCIAL LOGIC - ${authority}]\n`;
-      if (authority === 'DEWA') text += `- DEWA uses a net-metering system with credits expiring after ${roiParams.creditExpiryMonths} months.\n\n`;
-      else text += `- EtihadWE savings are based on direct self-consumption${batteryEnabled ? ` with a battery for ${batteryMode} usage.` : '.'}\n\n`;
-      if (financialAnalysis.yearlyBreakdown?.length > 0) {
-        text += `[25-YEAR FINANCIAL FORECAST]\nYear | Output   | Savings (AED) | Cash Flow (AED) | Cumulative (AED)\n----------------------------------------------------------------------\n`;
-        financialAnalysis.yearlyBreakdown.forEach(d => { text += `${d.year.toString().padEnd(5)}| ${(d.degradation * 100).toFixed(1).padStart(7)}% | ${Math.round(d.savings).toLocaleString().padStart(13)} | ${Math.round(d.cashFlow).toLocaleString().padStart(15)} | ${Math.round(d.cumulativeCashFlow).toLocaleString().padStart(16)}\n`; });
-      }
-      return text;
-  }, [authority, batteryEnabled, roiParams.systemCost, bills, systemRecommendation, financialAnalysis, roiParams.creditExpiryMonths, batteryMode, systemMetrics.sizingStrategy]);
+    const breakdown = `
+--- Project Configuration ---
+Project Name: ${projectName || 'N/A'}
+City: ${city}
+Authority: ${authority}
+Battery: ${batteryEnabled ? `Enabled (${batteryMode} mode)` : 'Disabled'}
 
-  const saveProject = () => {
-    const projectData = { projectName, city, authority, batteryEnabled, bills, tiers, fuelSurcharge, batteryMode, ...systemParams, ...roiParams };
-    const dataStr = JSON.stringify(projectData, null, 2);
+--- Consumption Analysis (Based on ${bills.length} bills) ---
+Total Annual Consumption: ${fullYearConsumptionStats.totalAnnual.toLocaleString(undefined, { maximumFractionDigits: 0 })} kWh
+Average Monthly Consumption: ${fullYearConsumptionStats.avgMonthly.toLocaleString(undefined, { maximumFractionDigits: 0 })} kWh
+Summer Average: ${seasonalAnalysis.summerAvg.toLocaleString(undefined, { maximumFractionDigits: 0 })} kWh/mo
+Winter Average: ${seasonalAnalysis.winterAvg.toLocaleString(undefined, { maximumFractionDigits: 0 })} kWh/mo
+Summer Spike vs Winter: ${seasonalAnalysis.spikePercentage.toFixed(1)}%
+
+--- System Recommendation ---
+Sizing Logic: ${systemRecommendation.sizingStrategy}
+System Size: ${systemRecommendation.systemSize} kWp
+Panel Count: ${systemRecommendation.panelCount} x ${panelWattage}W panels
+Space Required: ~${systemRecommendation.spaceRequired} m²
+Inverter Capacity: ${systemRecommendation.inverterCapacity} kW (Ratio: ${inverterRatio})
+Est. Annual Production (Y1): ${systemRecommendation.annualProduction.toLocaleString()} kWh
+Coverage: ${systemRecommendation.annualCoverage}% Annual | ${systemRecommendation.summerCoverage}% Summer | ${systemRecommendation.winterCoverage}% Winter
+
+--- Financials ---
+System Cost: ${parseFloat(roiParams.systemCost || '0').toLocaleString()} AED
+First-Year Savings: ${financialAnalysis.annualSavings.toLocaleString()} AED
+Payback Period: ${financialAnalysis.paybackPeriod > 0 ? `${financialAnalysis.paybackPeriod} years` : 'N/A'}
+25-Year Net Profit: ${financialAnalysis.roi25YearNetProfit.toLocaleString()} AED
+25-Year ROI: ${financialAnalysis.roiPercentage}%
+
+--- 25-Year Breakdown ---
+Year | Savings (AED) | Degradation | Cash Flow | Cumulative
+------------------------------------------------------------------
+${financialAnalysis.yearlyBreakdown.map(y => `${y.year.toString().padEnd(4)} | ${y.savings.toFixed(0).padEnd(13)} | ${(y.degradation * 100).toFixed(1)}% | ${y.cashFlow.toFixed(0).padEnd(9)} | ${y.cumulativeCashFlow.toFixed(0)}`).join('\n')}
+`;
+    return breakdown.trim();
+  }, [projectName, city, authority, batteryEnabled, batteryMode, bills.length, fullYearConsumptionStats, seasonalAnalysis, systemRecommendation, roiParams.systemCost, financialAnalysis, panelWattage, inverterRatio]);
+
+  const handleCopyReport = () => {
+    const report = `
+**Solar Savings Report for ${projectName || 'Your Project'}**
+
+**System Overview:**
+- **System Size:** ${systemRecommendation.systemSize} kWp
+- **Estimated Annual Production (Year 1):** ${systemRecommendation.annualProduction.toLocaleString()} kWh
+- **Recommended Panels:** ${systemRecommendation.panelCount} panels
+- **Space Required:** Approx. ${systemRecommendation.spaceRequired} m²
+
+**Financial Summary:**
+- **Total System Cost:** AED ${parseFloat(roiParams.systemCost || '0').toLocaleString()}
+- **Estimated First-Year Savings:** AED ${financialAnalysis.annualSavings.toLocaleString()}
+- **Average Monthly Savings:** AED ${financialAnalysis.monthlySavings.toLocaleString()}
+- **Simple Payback Period:** ${financialAnalysis.paybackPeriod > 0 ? `${financialAnalysis.paybackPeriod} years` : 'N/A'}
+- **25-Year Net Profit (ROI):** AED ${financialAnalysis.roi25YearNetProfit.toLocaleString()} (${financialAnalysis.roiPercentage}%)
+
+**Environmental Impact (25-Year Lifetime):**
+- **CO₂ Reduction:** ${(environmentalAnalysis.lifetimeCo2SavingsKg / 1000).toFixed(1)} Tonnes
+- **Equivalent Trees Planted:** ${environmentalAnalysis.lifetimeTreesPlanted.toLocaleString()}
+- **Equivalent Cars Off Road:** ${environmentalAnalysis.lifetimeCarsOffRoad.toLocaleString()}
+`;
+    navigator.clipboard.writeText(report.trim());
+    alert('Report copied to clipboard!');
+  };
+  
+  const handleSaveProject = () => {
+    const projectData = {
+      projectName, city, authority, batteryEnabled, batteryMode,
+      bills, tiers, fuelSurcharge,
+      ...systemParams,
+      ...roiParams,
+    };
+    const blob = new Blob([JSON.stringify(projectData, null, 2)], { type: 'application/json' });
     const link = document.createElement('a');
-    link.href = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-    link.download = `${projectName.replace(/\s/g, '_') || 'solar_project'}_${new Date().toISOString().split('T')[0]}.json`;
+    link.href = URL.createObjectURL(blob);
+    link.download = `${projectName.replace(/ /g, '_') || 'solar_project'}_config.json`;
     link.click();
+    URL.revokeObjectURL(link.href);
   };
 
-  const importProject = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        try { loadProjectData(JSON.parse(event.target?.result as string)); alert('Project imported successfully!'); } 
-        catch (err) { alert('Failed to import project. Please check the file format.'); }
-      };
-      reader.readAsText(file);
-      e.target.value = '';
+  const handleLoadProject = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result;
+        if (typeof text !== 'string') return;
+        const data = JSON.parse(text);
+        loadProjectData(data);
+        alert(`Project "${data.projectName}" loaded successfully!`);
+      } catch (err) {
+        alert('Failed to load project file. It may be corrupted.');
+        console.error(err);
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = ''; // Reset file input
   };
-
+  
+  // Final JSX
   return (
     <div className="space-y-6">
-        <Button asChild variant="ghost"><label htmlFor="import-project" className="cursor-pointer flex items-center text-brand-primary font-semibold"><Upload size={16} className="mr-2"/> Import Project</label></Button>
-        <input type="file" id="import-project" className="hidden" accept=".json" onChange={importProject}/>
-        
-        <ProjectConfigurationCard {...{ projectName, setProjectName, city, setCity, authority, setAuthority, batteryEnabled, setBatteryEnabled, batteryMode, setBatteryMode }} />
-        <BillAnalysisCard {...{ bills, setBills, billInput, setBillInput, tiers, setTiers, fuelSurcharge, setFuelSurcharge, seasonalAnalysis, fullYearConsumptionStats, handleEstimateFromPartialData, pendingEstimates, setPendingEstimates }} />
-        <SystemParametersCard params={systemParams} setParams={setSystemParams} authority={authority} batteryEnabled={batteryEnabled} />
+      <div className="flex flex-wrap justify-between items-center gap-4">
+        <h2 className="text-3xl font-bold text-brand-primary flex items-center gap-2">
+          <Sun className="h-8 w-8 text-brand-secondary" /> Solar Savings Calculator
+        </h2>
+        <div className="flex items-center gap-2">
+            <label htmlFor="load-project-input" className="cursor-pointer">
+                <Button asChild variant="ghost"><span className="flex items-center gap-2"><Upload size={16}/> Load</span></Button>
+                <input type="file" id="load-project-input" className="hidden" accept=".json" onChange={handleLoadProject}/>
+            </label>
+            <Button onClick={handleSaveProject} variant="ghost"><Save size={16} className="mr-2"/> Save</Button>
+            <Button onClick={handleCopyReport} variant="secondary"><Copy size={16} className="mr-2"/> Copy Report</Button>
+        </div>
+      </div>
       
-        {bills.length > 0 && (
-            <>
-                <RecommendedSystemCard {...{ systemRecommendation, availableSpace: systemParams.availableSpace, authority, batteryEnabled, setBatteryEnabled, batteryMode, setBatteryMode }} />
-                <FinancialAnalysisCard 
-                    financialAnalysis={financialAnalysis}
-                    authority={authority}
-                    roiParams={{...roiParams, bills, fullYearConsumptionStats, monthlyProductionMap}}
-                    setRoiParams={setRoiParams}
-                />
-                <EnvironmentalImpactCard environmentalAnalysis={environmentalAnalysis} />
-                <Card title="Export & Save">
-                    <div className="flex flex-wrap items-center gap-4">
-                        <Button onClick={copyReport} disabled={!roiParams.systemCost || bills.length === 0}><Copy className="w-5 h-5 mr-2" /> Copy Report</Button>
-                        <Button onClick={saveProject} disabled={bills.length === 0} variant="secondary"><Save className="w-5 h-5 mr-2" /> Save Project</Button>
-                    </div>
-                </Card>
-                <CalculationBreakdownCard showBreakdown={showBreakdown} setShowBreakdown={setShowBreakdown} fullCalculationBreakdown={fullCalculationBreakdown} />
-            </>
-        )}
+      <ProjectConfigurationCard 
+        projectName={projectName} setProjectName={setProjectName}
+        city={city} setCity={setCity}
+        authority={authority} setAuthority={setAuthority}
+        batteryEnabled={batteryEnabled} setBatteryEnabled={setBatteryEnabled}
+        batteryMode={batteryMode} setBatteryMode={setBatteryMode}
+      />
+      
+      <BillAnalysisCard 
+        bills={bills} setBills={setBills}
+        billInput={billInput} setBillInput={setBillInput}
+        tiers={tiers} setTiers={setTiers}
+        fuelSurcharge={fuelSurcharge} setFuelSurcharge={setFuelSurcharge}
+        seasonalAnalysis={seasonalAnalysis}
+        fullYearConsumptionStats={fullYearConsumptionStats}
+        handleEstimateFromPartialData={handleEstimateFromPartialData}
+        pendingEstimates={pendingEstimates}
+        setPendingEstimates={setPendingEstimates}
+      />
+      
+      {bills.length > 0 && (
+        <>
+          <SystemParametersCard 
+            params={systemParams}
+            setParams={setSystemParams}
+            authority={authority}
+            batteryEnabled={batteryEnabled}
+          />
+          <RecommendedSystemCard 
+            systemRecommendation={systemRecommendation}
+            availableSpace={systemParams.availableSpace}
+            authority={authority}
+            batteryEnabled={batteryEnabled}
+            setBatteryEnabled={setBatteryEnabled}
+            batteryMode={batteryMode}
+            setBatteryMode={setBatteryMode}
+          />
+          <FinancialAnalysisCard 
+            financialAnalysis={financialAnalysis}
+            roiParams={{...roiParams, bills, fullYearConsumptionStats, monthlyProductionMap}}
+            setRoiParams={setRoiParams}
+            authority={authority}
+          />
+          <EnvironmentalImpactCard 
+            environmentalAnalysis={environmentalAnalysis}
+          />
+          <CalculationBreakdownCard 
+            showBreakdown={showBreakdown}
+            setShowBreakdown={setShowBreakdown}
+            fullCalculationBreakdown={fullCalculationBreakdown}
+          />
+        </>
+      )}
+      {bills.length === 0 && (
+        <Card>
+            <div className="text-center py-8">
+                <HelpCircle size={48} className="mx-auto text-gray-400 mb-4" />
+                <h3 className="text-xl font-semibold text-gray-700">Get Started</h3>
+                <p className="text-gray-500 mt-2">Enter your electricity bills above to calculate your solar savings potential.</p>
+            </div>
+        </Card>
+      )}
     </div>
   );
 };
