@@ -1,5 +1,5 @@
 
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useMemo } from 'react';
 import { AppContext } from '../context/AppContext';
 import { AnyComponent, ComponentTypes, ComponentType, SolarPanel, Inverter, Battery, MountingSystem, Cable, MonitoringSystem, Supplier, ElectricCharger } from '../types';
 import { Card, Button, Table, Modal, Input, Select } from '../components/ui';
@@ -260,6 +260,68 @@ const ImportModal: React.FC<{
 
 // --- END: Bulk Import Components ---
 
+const componentTypeConfig = {
+    [ComponentTypes.SolarPanel]: {
+        headers: ['Manufacturer', 'Model', 'Wattage', 'Efficiency', 'Cost', 'Supplier', 'Actions'],
+        renderCells: (c: SolarPanel) => (
+            <>
+                <td className="px-4 py-2">{c.wattage || 'N/A'}W</td>
+                <td className="px-4 py-2">{c.efficiency || 'N/A'}%</td>
+            </>
+        )
+    },
+    [ComponentTypes.Inverter]: {
+        headers: ['Manufacturer', 'Model', 'Capacity (kW)', 'Type', 'Cost', 'Supplier', 'Actions'],
+        renderCells: (c: Inverter) => (
+            <>
+                <td className="px-4 py-2">{c.capacity || 'N/A'}kW</td>
+                <td className="px-4 py-2">{c.inverterType || 'N/A'}</td>
+            </>
+        )
+    },
+    [ComponentTypes.Battery]: {
+        headers: ['Manufacturer', 'Model', 'Capacity (kWh)', 'Type', 'Cost', 'Supplier', 'Actions'],
+        renderCells: (c: Battery) => (
+            <>
+                <td className="px-4 py-2">{c.capacity || 'N/A'}kWh</td>
+                <td className="px-4 py-2">{c.batteryType || 'N/A'}</td>
+            </>
+        )
+    },
+    [ComponentTypes.MountingSystem]: {
+        headers: ['Manufacturer', 'Model', 'Type', 'Material', 'Cost', 'Supplier', 'Actions'],
+        renderCells: (c: MountingSystem) => (
+            <>
+                <td className="px-4 py-2">{c.mountingType || 'N/A'}</td>
+                <td className="px-4 py-2">{c.material || 'N/A'}</td>
+            </>
+        )
+    },
+    [ComponentTypes.Cable]: {
+        headers: ['Manufacturer', 'Model', 'Type', 'Cross-section', 'Cost', 'Supplier', 'Actions'],
+        renderCells: (c: Cable) => (
+            <>
+                <td className="px-4 py-2">{c.cableType || 'N/A'}</td>
+                <td className="px-4 py-2">{c.crossSection ? `${c.crossSection} mm²` : 'N/A'}</td>
+            </>
+        )
+    },
+    [ComponentTypes.MonitoringSystem]: {
+        headers: ['Manufacturer', 'Model', 'Cost', 'Supplier', 'Actions'],
+        renderCells: (c: MonitoringSystem) => <></>
+    },
+    [ComponentTypes.ElectricCharger]: {
+        headers: ['Manufacturer', 'Model', 'Speed (kW)', 'Connector', 'Cost', 'Supplier', 'Actions'],
+        renderCells: (c: ElectricCharger) => (
+            <>
+                <td className="px-4 py-2">{c.chargingSpeed || 'N/A'}kW</td>
+                <td className="px-4 py-2">{c.connectorType || 'N/A'}</td>
+            </>
+        )
+    },
+};
+
+
 const ComponentsPage = () => {
     const { state, addComponent, updateComponent, deleteComponent } = useContext(AppContext);
     const { components, suppliers } = state;
@@ -295,68 +357,37 @@ const ComponentsPage = () => {
         }
     };
 
-    const filteredComponents = components
+    const filteredComponents = useMemo(() => components
         .filter(c => c.type === activeTab)
         .filter(c =>
             c.manufacturer.toLowerCase().includes(searchTerm.toLowerCase()) ||
             c.model.toLowerCase().includes(searchTerm.toLowerCase())
-        );
+        ), [components, activeTab, searchTerm]);
 
     const getSupplierName = (supplierId: string) => suppliers.find(s => s.id === supplierId)?.name || 'N/A';
 
-    const headers: Record<ComponentType, string[]> = {
-        [ComponentTypes.SolarPanel]: ['Manufacturer', 'Model', 'Wattage', 'Efficiency', 'Cost', 'Supplier', 'Actions'],
-        [ComponentTypes.Inverter]: ['Manufacturer', 'Model', 'Capacity (kW)', 'Type', 'Cost', 'Supplier', 'Actions'],
-        [ComponentTypes.Battery]: ['Manufacturer', 'Model', 'Capacity (kWh)', 'Type', 'Cost', 'Supplier', 'Actions'],
-        [ComponentTypes.MountingSystem]: ['Manufacturer', 'Model', 'Type', 'Material', 'Cost', 'Supplier', 'Actions'],
-        [ComponentTypes.Cable]: ['Manufacturer', 'Model', 'Type', 'Cross-section', 'Cost', 'Supplier', 'Actions'],
-        [ComponentTypes.MonitoringSystem]: ['Manufacturer', 'Model', 'Cost', 'Supplier', 'Actions'],
-        [ComponentTypes.ElectricCharger]: ['Manufacturer', 'Model', 'Speed (kW)', 'Connector', 'Cost', 'Supplier', 'Actions'],
-    };
+    const currentHeaders = componentTypeConfig[activeTab]?.headers || [];
 
     const renderRow = (component: AnyComponent) => {
-        const commonCols = (
-            <>
+        const cost = component.cost ? `${component.cost.toLocaleString()} AED` : 'N/A';
+        const config = componentTypeConfig[component.type as keyof typeof componentTypeConfig];
+
+        return (
+            <tr key={component.id}>
                 <td className="whitespace-nowrap px-4 py-2 font-medium text-gray-900">{component.manufacturer}</td>
                 <td className="whitespace-nowrap px-4 py-2 text-gray-700">{component.model}</td>
-            </>
+                {config ? config.renderCells(component as any) : null}
+                <td className="px-4 py-2">{cost}</td>
+                <td className="px-4 py-2">{getSupplierName(component.supplierId)}</td>
+                <td className="whitespace-nowrap px-4 py-2">
+                    <div className="flex gap-2">
+                        <Button variant="ghost" size="sm" onClick={() => openModal(component)}><Edit size={16} /></Button>
+                        <Button variant="ghost" size="sm" className="text-red-500" onClick={() => handleDelete(component)}><Trash2 size={16} /></Button>
+                    </div>
+                </td>
+            </tr>
         );
-
-        const actions = (
-            <td className="whitespace-nowrap px-4 py-2">
-                <div className="flex gap-2">
-                    <Button variant="ghost" size="sm" onClick={() => openModal(component)}><Edit size={16} /></Button>
-                    <Button variant="ghost" size="sm" className="text-red-500" onClick={() => handleDelete(component)}><Trash2 size={16} /></Button>
-                </div>
-            </td>
-        );
-
-        const cost = component.cost ? `${component.cost} AED` : 'N/A';
-
-        switch (component.type) {
-            case ComponentTypes.SolarPanel:
-                return <tr key={component.id}>{commonCols}<td className="px-4 py-2">{component.wattage || 'N/A'}W</td><td className="px-4 py-2">{component.efficiency || 'N/A'}%</td><td className="px-4 py-2">{cost}</td><td className="px-4 py-2">{getSupplierName(component.supplierId)}</td>{actions}</tr>;
-            case ComponentTypes.Inverter:
-                return <tr key={component.id}>{commonCols}<td className="px-4 py-2">{component.capacity || 'N/A'}kW</td><td className="px-4 py-2">{component.inverterType || 'N/A'}</td><td className="px-4 py-2">{cost}</td><td className="px-4 py-2">{getSupplierName(component.supplierId)}</td>{actions}</tr>;
-            case ComponentTypes.Battery:
-                const battery = component as Battery;
-                return <tr key={component.id}>{commonCols}<td className="px-4 py-2">{battery.capacity || 'N/A'}kWh</td><td className="px-4 py-2">{battery.batteryType || 'N/A'}</td><td className="px-4 py-2">{cost}</td><td className="px-4 py-2">{getSupplierName(component.supplierId)}</td>{actions}</tr>;
-            case ComponentTypes.ElectricCharger:
-                const charger = component as ElectricCharger;
-                return <tr key={component.id}>{commonCols}<td className="px-4 py-2">{charger.chargingSpeed || 'N/A'}kW</td><td className="px-4 py-2">{charger.connectorType || 'N/A'}</td><td className="px-4 py-2">{cost}</td><td className="px-4 py-2">{getSupplierName(component.supplierId)}</td>{actions}</tr>;
-            case ComponentTypes.MountingSystem:
-                const mounting = component as MountingSystem;
-                return <tr key={component.id}>{commonCols}<td className="px-4 py-2">{mounting.mountingType || 'N/A'}</td><td className="px-4 py-2">{mounting.material || 'N/A'}</td><td className="px-4 py-2">{cost}</td><td className="px-4 py-2">{getSupplierName(component.supplierId)}</td>{actions}</tr>;
-            case ComponentTypes.Cable:
-                const cable = component as Cable;
-                return <tr key={component.id}>{commonCols}<td className="px-4 py-2">{cable.cableType || 'N/A'}</td><td className="px-4 py-2">{cable.crossSection ? `${cable.crossSection} mm²` : 'N/A'}</td><td className="px-4 py-2">{cost}</td><td className="px-4 py-2">{getSupplierName(component.supplierId)}</td>{actions}</tr>;
-            case ComponentTypes.MonitoringSystem:
-                return <tr key={component.id}>{commonCols}<td className="px-4 py-2">{cost}</td><td className="px-4 py-2">{getSupplierName(component.supplierId)}</td>{actions}</tr>;
-            default:
-                return <tr key={(component as AnyComponent).id}><td colSpan={headers[activeTab]?.length || 5} className="text-center py-4 text-gray-500">No details available for this component type.</td></tr>;
-        }
     }
-
 
     return (
         <>
@@ -388,10 +419,10 @@ const ComponentsPage = () => {
                         className="w-full max-w-sm p-2 border rounded-md"
                     />
                 </div>
-                <Table headers={headers[activeTab] || []}>
+                <Table headers={currentHeaders}>
                     {filteredComponents.length > 0
                         ? filteredComponents.map(c => renderRow(c))
-                        : <tr><td colSpan={headers[activeTab]?.length || 5} className="text-center py-4 text-gray-500">No components found for this type.</td></tr>
+                        : <tr><td colSpan={currentHeaders.length} className="text-center py-4 text-gray-500">No components found for this type.</td></tr>
                     }
                 </Table>
 

@@ -109,13 +109,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, setIsSidebarOpen }) =>
 
   return (
     <>
-      <div className={`fixed lg:relative inset-y-0 left-0 z-30 w-64 bg-brand-primary text-white flex-col transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 transition-transform duration-300 ease-in-out`}>
+      <div id="main-sidebar" className={`fixed lg:relative inset-y-0 left-0 z-30 w-64 bg-brand-primary text-white flex-col transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 transition-transform duration-300 ease-in-out`}>
         <div className="flex items-center justify-between p-4 border-b border-brand-dark">
             <div className="flex items-center gap-2">
                 <Sun className="h-8 w-8 text-brand-secondary" />
                 <h1 className="text-xl font-bold">Solar Oasis</h1>
             </div>
-          <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden text-white">
+          <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden text-white" aria-label="Close sidebar">
             <X size={24} />
           </button>
         </div>
@@ -144,7 +144,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, setIsSidebarOpen }) =>
             <p className="text-xs text-gray-400">solaroasis.ae</p>
         </div>
       </div>
-       {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 bg-black/50 z-20 lg:hidden"></div>}
+       {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 bg-black/50 z-20 lg:hidden" aria-hidden="true"></div>}
     </>
   );
 };
@@ -160,7 +160,7 @@ const Header: React.FC<HeaderProps> = ({ pageTitle, onMenuClick, isSidebarOpen }
     <header className="bg-white shadow-md p-4 flex items-center justify-between sticky top-0 z-10">
       <div className="flex items-center">
         {!isSidebarOpen && (
-            <button onClick={onMenuClick} className="text-gray-600 mr-4">
+            <button onClick={onMenuClick} className="text-gray-600 mr-4" aria-label="Open sidebar" aria-controls="main-sidebar" aria-expanded="false">
                 <Menu size={24} />
             </button>
         )}
