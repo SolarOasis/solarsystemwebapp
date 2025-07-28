@@ -1,4 +1,3 @@
-
 import React, { useState, useContext, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AppContext } from '../context/AppContext';
@@ -266,7 +265,7 @@ const ProjectDetails = ({ project: initialProject }: { project: Project }) => {
       if (JSON.stringify(newProject) !== JSON.stringify(project)) {
         setProject(newProject);
       }
-    }, [project.components, project.costAnalysis.installationCharges, project.costAnalysis.commissioningCharges, project.costAnalysis.electricalCost, project.costAnalysis.installationSellingPrice, project.costAnalysis.commissioningSellingPrice, project.costAnalysis.electricalSellingPrice]);
+    }, [project.components, project.costAnalysis.installationCharges, project.costAnalysis.commissioningCharges, project.costAnalysis.electricalCost, project.costAnalysis.installationSellingPrice, project.costAnalysis.commissioningSellingPrice, project.costAnalysis.electricalSellingPrice, project.systemCapacity]);
 
     const totalComponentSellingPrice = project.components.reduce((acc, pc) => acc + ((pc.sellingPrice ?? pc.costAtTimeOfAdd) * pc.quantity), 0);
 

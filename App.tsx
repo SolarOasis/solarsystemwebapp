@@ -7,15 +7,17 @@ import ProjectsPage from './pages/ProjectsPage';
 import SuppliersPage from './pages/SuppliersPage';
 import SettingsPage from './pages/SettingsPage';
 import LoginPage from './pages/LoginPage';
-import CalculatorPage from './pages/CalculatorPage'; // Import the new page
+import CalculatorPage from './pages/CalculatorPage';
+import AiAssistantPage from './pages/AiAssistantPage'; // Import the new page
 import { AppContext } from './context/AppContext';
-import { Sun, Wrench, Package, Users, BarChart3, Menu, X, Loader, Settings, Calculator } from 'lucide-react';
+import { Sun, Wrench, Package, Users, BarChart3, Menu, X, Loader, Settings, Calculator, Sparkles } from 'lucide-react';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: BarChart3 },
   { path: '/components', label: 'Components', icon: Package },
   { path: '/projects', label: 'Projects', icon: Wrench },
   { path: '/calculator', label: 'Calculator', icon: Calculator },
+  { path: '/ai-assistant', label: 'AI Assistant', icon: Sparkles },
   { path: '/suppliers', label: 'Suppliers', icon: Users },
   { path: '/settings', label: 'Settings', icon: Settings },
 ];
@@ -86,6 +88,7 @@ const MainLayout = ({ error }: { error: string | null }) => {
                           <Route path="/projects" element={<ProjectsPage />} />
                           <Route path="/projects/:projectId" element={<ProjectsPage />} />
                           <Route path="/calculator" element={<CalculatorPage />} />
+                          <Route path="/ai-assistant" element={<AiAssistantPage />} />
                           <Route path="/suppliers" element={<SuppliersPage />} />
                           <Route path="/settings" element={<SettingsPage />} />
                       </Routes>

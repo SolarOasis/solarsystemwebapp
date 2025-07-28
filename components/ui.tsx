@@ -26,12 +26,20 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
     const combinedClasses = `${baseClasses} ${sizeClasses[size]} ${variantClasses[variant]} ${className || ''}`;
     
-    if (asChild && React.isValidElement<any>(children)) {
-        return React.cloneElement(children, {
-            ref,
-            className: `${combinedClasses} ${children.props.className || ''}`,
-            ...props,
-        });
+    if (asChild) {
+        const child = React.Children.only(children);
+        if (React.isValidElement(child)) {
+            // After the type guard, child is a ReactElement. Its props can be accessed.
+            // We cast the props to explicitly state we're looking for a className.
+            const childProps = child.props as { className?: string };
+            const mergedClassName = [combinedClasses, childProps.className].filter(Boolean).join(' ');
+
+            return React.cloneElement<any>(child, {
+                ref,
+                className: mergedClassName,
+                ...props,
+            });
+        }
     }
 
     return (
@@ -40,6 +48,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         </button>
     );
 });
+Button.displayName = "Button";
 
 
 // Input
@@ -59,6 +68,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(({ label, id
         </div>
     );
 });
+Input.displayName = "Input";
 
 // Select
 interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
@@ -79,6 +89,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(({ label,
         </div>
     );
 });
+Select.displayName = "Select";
 
 
 // Card
