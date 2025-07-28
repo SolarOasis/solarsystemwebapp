@@ -1,3 +1,4 @@
+
 import { AnyComponent, Supplier, Project, ClientInfo, CostAnalysis, ProjectComponent, ComponentType } from '../types';
 
 const getApiUrl = (): string | null => {

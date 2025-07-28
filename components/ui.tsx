@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { X } from 'lucide-react';
 
@@ -6,8 +5,11 @@ import { X } from 'lucide-react';
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
     variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
     size?: 'sm' | 'md';
+    asChild?: boolean;
 }
-export const Button: React.FC<ButtonProps> = ({ children, className, variant = 'primary', size = 'md', ...props }) => {
+export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+    ({ children, className, variant = 'primary', size = 'md', asChild = false, ...props }, ref) => {
+    
     const baseClasses = 'inline-flex items-center justify-center rounded-lg font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
     
     const sizeClasses = {
@@ -21,13 +23,24 @@ export const Button: React.FC<ButtonProps> = ({ children, className, variant = '
         danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
         ghost: 'bg-transparent text-gray-700 hover:bg-gray-200 focus:ring-gray-400',
     };
+
+    const combinedClasses = `${baseClasses} ${sizeClasses[size]} ${variantClasses[variant]} ${className || ''}`;
     
+    if (asChild && React.isValidElement<any>(children)) {
+        return React.cloneElement(children, {
+            ref,
+            className: `${combinedClasses} ${children.props.className || ''}`,
+            ...props,
+        });
+    }
+
     return (
-        <button className={`${baseClasses} ${sizeClasses[size]} ${variantClasses[variant]} ${className || ''}`} {...props}>
+        <button className={combinedClasses} ref={ref} {...props}>
             {children}
         </button>
     );
-};
+});
+
 
 // Input
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {

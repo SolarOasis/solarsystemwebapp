@@ -1,3 +1,4 @@
+
 {
   "name": "Solar Oasis Database Management System",
   "description": "A comprehensive system to manage solar components, projects, and suppliers for Solar Oasis. Features a components database, project management with cost analysis, quotation generation, and a Gemini-powered backend generator for seamless Google Sheets integration.",
