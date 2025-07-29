@@ -24,7 +24,7 @@ const SettingsPage = () => {
 
             <Card title="Google Services & Backend Setup">
                 <div>
-                    <h3 className="font-semibold text-lg mb-2">Backend Instructions:</h3>
+                    <h3 className="font-semibold text-lg mb-2">Backend Instructions (Google Sheets):</h3>
                     <ol className="list-decimal list-inside space-y-3 text-gray-700">
                         <li>Go to <a href="https://sheets.new" target="_blank" rel="noopener noreferrer" className="text-brand-primary underline">sheets.new</a> to create a new Google Sheet for your database.</li>
                         <li>Ask your developer assistant for the latest <strong className="text-brand-primary">`Code.gs`</strong> backend script.</li>
@@ -39,6 +39,17 @@ const SettingsPage = () => {
                         <li>In Vercel, navigate to your project's "Settings" &rarr; "Environment Variables".</li>
                         <li>Create a variable named <code className="font-mono bg-gray-200 px-1 rounded">VITE_GOOGLE_APPS_SCRIPT_URL</code> and paste your Web app URL as the value.</li>
                         <li>Redeploy your application in Vercel to apply the changes.</li>
+                    </ol>
+                </div>
+
+                 <div className="mt-6 pt-6 border-t">
+                    <h3 className="font-semibold text-lg mb-2">AI Assistant Setup (Google Gemini API):</h3>
+                    <p className="text-sm text-gray-500 mb-3">To enable the AI Assistant, you need to provide a Google Gemini API key.</p>
+                    <ol className="list-decimal list-inside space-y-3 text-gray-700">
+                        <li>Go to <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-brand-primary underline">Google AI Studio</a> to generate your API key.</li>
+                        <li>In Vercel, navigate to your project's "Settings" &rarr; "Environment Variables".</li>
+                        <li>Create a new variable named <code className="font-mono bg-gray-200 px-1 rounded">VITE_API_KEY</code> and paste your Google Gemini API key as the value.</li>
+                        <li>Redeploy your application in Vercel. The AI Assistant will now be enabled.</li>
                     </ol>
                 </div>
             </Card>

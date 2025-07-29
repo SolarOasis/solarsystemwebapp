@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI, Chat } from '@google/genai';
 import { useNavigate } from 'react-router-dom';
@@ -64,10 +65,10 @@ export const AiAssistant: React.FC = () => {
 
   useEffect(() => {
     try {
-      // Use the correct environment variable as per the guidelines
-      const apiKey = process.env.API_KEY;
+      // Vite exposes environment variables to the client via `import.meta.env`
+      const apiKey = (import.meta as any).env.VITE_API_KEY;
       if (!apiKey) {
-          setMessages([{ role: 'model', text: 'Error: Could not initialize the AI Assistant. Please ensure the API key is configured correctly.' }]);
+          setMessages([{ role: 'model', text: 'Error: Could not initialize the AI Assistant. Please ensure the VITE_API_KEY is configured in your Vercel environment variables as per the instructions on the Settings page.' }]);
           return;
       }
       const ai = new GoogleGenAI({ apiKey });
@@ -79,7 +80,7 @@ export const AiAssistant: React.FC = () => {
       handleSendMessage("Hello");
     } catch (error) {
         console.error("Gemini initialization failed:", error);
-        setMessages([{ role: 'model', text: 'Error: Could not initialize the AI Assistant. Please ensure the API key is configured correctly.' }]);
+        setMessages([{ role: 'model', text: 'Error: Could not initialize the AI Assistant. This might be due to an invalid API key or network issue.' }]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
