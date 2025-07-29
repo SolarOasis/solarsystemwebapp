@@ -115,7 +115,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isSidebarOpen, setIsSidebarOpen }) =>
                 <Sun className="h-8 w-8 text-brand-secondary" />
                 <h1 className="text-xl font-bold">Solar Oasis</h1>
             </div>
-          <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden text-white" aria-label="Close sidebar">
+          <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden text-white" aria-label="Close sidebar" aria-controls="main-sidebar" aria-expanded="true">
             <X size={24} />
           </button>
         </div>
@@ -160,7 +160,7 @@ const Header: React.FC<HeaderProps> = ({ pageTitle, onMenuClick, isSidebarOpen }
     <header className="bg-white shadow-md p-4 flex items-center justify-between sticky top-0 z-10">
       <div className="flex items-center">
         {!isSidebarOpen && (
-            <button onClick={onMenuClick} className="text-gray-600 mr-4" aria-label="Open sidebar" aria-controls="main-sidebar" aria-expanded="false">
+            <button onClick={onMenuClick} className="text-gray-600 mr-4" aria-label="Open sidebar" aria-controls="main-sidebar" aria-expanded={isSidebarOpen}>
                 <Menu size={24} />
             </button>
         )}
