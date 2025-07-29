@@ -1639,7 +1639,9 @@ const CalculatorPage = () => {
                     maxMonthlyExcess = Math.max(maxMonthlyExcess, monthlyExcess);
                 });
                 const maxDailyExcess = maxMonthlyExcess / 30; // Use average days for sizing
-                batteryCapacity = maxDailyExcess > 0 ? maxDailyExcess / (systemParams.usableDoD * systemParams.batteryEfficiency) : 0;
+                // Corrected: The goal is to STORE the excess, so we size the usable capacity to match it.
+                // Efficiency is applied on discharge, not for sizing the storage container itself.
+                batteryCapacity = maxDailyExcess > 0 ? maxDailyExcess / systemParams.usableDoD : 0;
             }
         }
         
