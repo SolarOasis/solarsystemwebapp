@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, Button, Input, Select, Table, Modal } from '../components/ui';
 import { Sun, Battery, AlertCircle, Trash2, PlusCircle, Wand2, Info, Upload, Copy, Save, Leaf, ChevronDown, ChevronUp, Car, Trees, Home, XCircle, HelpCircle, ChevronRight, Loader } from 'lucide-react';
@@ -1563,7 +1564,7 @@ const CalculatorPage = () => {
                 } else { // 'unused' mode
                     const daytimeTarget = fullYearConsumptionStats.total * daytimeRatio;
                     targetConsumption = daytimeTarget;
-                    sizingNote = `System sized for ${systemParams.daytimeConsumption}% daytime consumption + battery to store unused solar.`;
+                    sizingNote = `System sized for ${systemParams.daytimeConsumption}% daytime consumption. Battery is sized to store the average daily excess solar, offering a balanced ROI.`;
                 }
             } else {
                 targetConsumption = fullYearConsumptionStats.total * daytimeRatio;
@@ -1629,19 +1630,19 @@ const CalculatorPage = () => {
             if (systemParams.batteryMode === 'night') {
                 const avgNighttimeLoad = avgDailyConsumption * (1 - daytimeRatio);
                 batteryCapacity = avgNighttimeLoad > 0 ? avgNighttimeLoad / (systemParams.usableDoD * systemParams.batteryEfficiency) : 0;
-            } else { // 'unused' mode
-                let maxMonthlyExcess = 0;
+            } else { // 'unused' mode - Strategic sizing based on average daily unused solar
+                let totalAnnualUnusedSolar = 0;
                 months.forEach(month => {
                     const monthlyProd = monthlyProductionMap[month] || 0;
                     const monthlyConsumption = consumptionByMonthForUnused[month];
                     const monthlyDaytimeConsumption = monthlyConsumption * daytimeRatio;
                     const monthlyExcess = Math.max(0, monthlyProd - monthlyDaytimeConsumption);
-                    maxMonthlyExcess = Math.max(maxMonthlyExcess, monthlyExcess);
+                    totalAnnualUnusedSolar += monthlyExcess;
                 });
-                const maxDailyExcess = maxMonthlyExcess / 30; // Use average days for sizing
-                // Corrected: The goal is to STORE the excess, so we size the usable capacity to match it.
-                // Efficiency is applied on discharge, not for sizing the storage container itself.
-                batteryCapacity = maxDailyExcess > 0 ? maxDailyExcess / systemParams.usableDoD : 0;
+
+                const averageDailyUnusedSolar = totalAnnualUnusedSolar / 365;
+                // Size the battery to store the average daily excess, accounting for depth of discharge.
+                batteryCapacity = averageDailyUnusedSolar > 0 ? averageDailyUnusedSolar / systemParams.usableDoD : 0;
             }
         }
         
@@ -1879,7 +1880,12 @@ const CalculatorPage = () => {
         const today = new Date();
         const formattedDate = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
         
+        reportParts.push('SOLAR SAVINGS & ROI REPORT');
+        reportParts.push('==========================');
+        reportParts.push(`Project Name: ${projectName || 'Unnamed Project'}`);
         reportParts.push(`Date: ${formattedDate}`);
+        reportParts.push(`Authority: ${authority}`);
+        reportParts.push(`Emirate: ${city}`);
         reportParts.push('');
 
         reportParts.push('CONSUMPTION ANALYSIS');
